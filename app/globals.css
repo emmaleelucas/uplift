@@ -1,0 +1,220 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 40% 98%;
+    --foreground: 20 20% 12%;
+    --card: 48 45% 99%;
+    --card-foreground: 20 20% 12%;
+    --popover: 48 45% 99%;
+    --popover-foreground: 20 20% 12%;
+    --primary: 48 100% 45%;
+    --primary-foreground: 20 20% 12%;
+    --secondary: 24 100% 95%;
+    --secondary-foreground: 20 20% 12%;
+    --muted: 48 30% 94%;
+    --muted-foreground: 20 15% 40%;
+    --accent: 24 100% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 48 30% 85%;
+    --input: 48 30% 85%;
+    --ring: 48 100% 45%;
+    --radius: 0.75rem;
+
+    /* Custom colors for Uplift - Yellow Forward with Orange Accent */
+    --uplift-yellow: 48 100% 50%;
+    --uplift-gold: 45 100% 45%;
+    --uplift-orange: 24 100% 40%;
+    --uplift-burnt: 20 85% 35%;
+    --uplift-warm: 48 100% 96%;
+    --uplift-cream: 48 60% 97%;
+    --uplift-dark: 20 20% 12%;
+  }
+
+  .dark {
+    --background: 20 20% 7%;
+    --foreground: 48 40% 95%;
+    --card: 20 18% 11%;
+    --card-foreground: 48 40% 95%;
+    --popover: 20 18% 11%;
+    --popover-foreground: 48 40% 95%;
+    --primary: 48 100% 50%;
+    --primary-foreground: 20 20% 10%;
+    --secondary: 20 18% 16%;
+    --secondary-foreground: 48 40% 95%;
+    --muted: 20 18% 16%;
+    --muted-foreground: 48 30% 55%;
+    --accent: 24 100% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 20 18% 18%;
+    --input: 20 18% 18%;
+    --ring: 48 100% 50%;
+
+    --uplift-yellow: 48 100% 55%;
+    --uplift-gold: 45 100% 50%;
+    --uplift-orange: 24 100% 45%;
+    --uplift-burnt: 20 85% 40%;
+    --uplift-warm: 20 18% 14%;
+    --uplift-cream: 20 18% 11%;
+    --uplift-dark: 48 40% 95%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom utility classes */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-600;
+  }
+
+  .text-gradient-dark {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 via-amber-400 to-orange-500;
+  }
+
+  .hero-gradient {
+    background: linear-gradient(135deg,
+        hsl(48, 100%, 50%) 0%,
+        hsl(45, 100%, 45%) 50%,
+        hsl(24, 100%, 40%) 100%);
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .card-hover:hover {
+    @apply -translate-y-1 shadow-xl;
+  }
+
+  .glassmorphism {
+    @apply backdrop-blur-md bg-white/80 dark:bg-black/50;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.8s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.6s ease-out forwards;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.5s ease-out forwards;
+  }
+
+  .stagger-1 {
+    animation-delay: 0.1s;
+  }
+
+  .stagger-2 {
+    animation-delay: 0.2s;
+  }
+
+  .stagger-3 {
+    animation-delay: 0.3s;
+  }
+
+  .stagger-4 {
+    animation-delay: 0.4s;
+  }
+
+  .stagger-5 {
+    animation-delay: 0.5s;
+  }
+
+  .stagger-6 {
+    animation-delay: 0.6s;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(241 245 249);
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: rgb(30 41 59);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139);
+}
