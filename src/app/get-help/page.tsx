@@ -4,7 +4,7 @@ import Link from "next/link";
 import { MapPin, Clock, Phone, Users, FileText, ExternalLink } from "lucide-react";
 import DownloadRoutesButton from "@/components/download-routes-button";
 import Map from "@/components/map-wrapper";
-import routesData from "@/routes.json";
+import routesData from "../../../routes.json";
 
 export const metadata: Metadata = {
     title: "Get Help",

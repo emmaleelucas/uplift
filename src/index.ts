@@ -1,0 +1,534 @@
+import 'dotenv/config';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+import {
+  route,
+  routeStop,
+  homelessPerson,
+  category,
+  itemType,
+  warehouseInventory,
+  van,
+  driver,
+  routeRun,
+  distribution,
+} from './db/schema';
+import routesData from '../routes.json';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export const db = drizzle(pool);
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+function randomElement<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randomDate(start: Date, end: Date): Date {
+  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+}
+
+function formatDate(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+// ============================================
+// FAKE DATA
+// ============================================
+
+const maleFirstNames = [
+  'James', 'John', 'Robert', 'Michael', 'William', 'David', 'Richard', 'Joseph',
+  'Thomas', 'Charles', 'Christopher', 'Daniel', 'Matthew', 'Anthony', 'Mark',
+  'Donald', 'Steven', 'Paul', 'Andrew', 'Joshua', 'Kenneth', 'Kevin', 'Brian',
+  'George', 'Timothy', 'Ronald', 'Edward', 'Jason', 'Jeffrey', 'Ryan',
+];
+
+const femaleFirstNames = [
+  'Mary', 'Patricia', 'Jennifer', 'Linda', 'Barbara', 'Elizabeth', 'Susan',
+  'Jessica', 'Sarah', 'Karen', 'Lisa', 'Nancy', 'Betty', 'Margaret', 'Sandra',
+  'Ashley', 'Kimberly', 'Emily', 'Donna', 'Michelle', 'Dorothy', 'Carol',
+  'Amanda', 'Melissa', 'Deborah', 'Stephanie', 'Rebecca', 'Sharon', 'Laura', 'Cynthia',
+];
+
+const lastNames = [
+  'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis',
+  'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson',
+  'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson',
+  'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson',
+];
+
+const vanNames = [
+  'Hope Mobile', 'Mercy Van', 'Helping Hands', 'Community Care', 'Street Angels',
+];
+
+const licensePlates = [
+  'KC-1234', 'MO-5678', 'KS-9012', 'UPLIFT1', 'HOPE-KC',
+];
+
+const categoryData = [
+  { name: 'Clothing', description: 'Apparel items including shirts, pants, jackets, footwear, and undergarments' },
+  { name: 'Basic Needs', description: 'Essential supplies for outdoor survival and comfort' },
+  { name: 'Hygiene Items', description: 'Travel-sized personal care and hygiene products' },
+  { name: 'Canned Goods', description: 'Non-perishable canned food items - pop-top preferred, no glass, no expired food' },
+];
+
+// Clothing sizes
+const clothingSizes = ['S', 'M', 'L', 'XL', 'XXL'];
+const pantSizes = ['28', '30', '32', '34', '36', '38', '40'];
+const shoeSizes = ['7', '8', '9', '10', '11', '12', '13'];
+
+const itemTypeData: { [key: string]: { name: string; sizes?: string[]; genders?: ('male' | 'female' | 'none')[] }[] } = {
+  'Clothing': [
+    // Shirts
+    { name: 'Short Sleeve Shirt', sizes: clothingSizes, genders: ['male', 'female'] },
+    { name: 'Long Sleeve Shirt', sizes: clothingSizes, genders: ['male', 'female'] },
+    // Pants
+    { name: 'Jeans', sizes: pantSizes, genders: ['male', 'female'] },
+    { name: 'Pants', sizes: pantSizes, genders: ['male', 'female'] },
+    { name: 'Sweat Pants', sizes: clothingSizes, genders: ['male', 'female'] },
+    // Headwear
+    { name: 'Baseball Cap', sizes: ['One Size'], genders: ['none'] },
+    { name: 'Beanie', sizes: ['One Size'], genders: ['none'] },
+    // Footwear
+    { name: 'Socks', sizes: ['S', 'M', 'L'], genders: ['male', 'female'] },
+    { name: 'Boots', sizes: shoeSizes, genders: ['male', 'female'] },
+    { name: 'Sneakers', sizes: shoeSizes, genders: ['male', 'female'] },
+    // Outerwear
+    { name: 'Hoodie', sizes: clothingSizes, genders: ['male', 'female'] },
+    { name: 'Jacket', sizes: clothingSizes, genders: ['male', 'female'] },
+    { name: 'Coat', sizes: clothingSizes, genders: ['male', 'female'] },
+    // Accessories
+    { name: 'Gloves', sizes: ['S', 'M', 'L', 'XL'], genders: ['male', 'female'] },
+    // Undergarments
+    { name: 'Underwear', sizes: clothingSizes, genders: ['male', 'female'] },
+  ],
+  'Basic Needs': [
+    // Water containers
+    { name: 'Half Gallon Plastic Jug' },
+    { name: 'Full Gallon Plastic Jug' },
+    { name: '1-Liter Plastic Bottle' },
+    { name: '2-Liter Plastic Bottle' },
+    // Entertainment & Vision
+    { name: 'Playing Cards' },
+    { name: 'Reading Glasses' },
+    // Fire & Light
+    { name: 'Matches' },
+    { name: 'Lighter' },
+    { name: 'Candles' },
+    { name: 'Flashlight' },
+    { name: 'Headlamp' },
+    // Batteries
+    { name: 'AAA Batteries' },
+    { name: 'AA Batteries' },
+    // Bags
+    { name: 'Backpack' },
+    { name: 'Duffel Bag' },
+    { name: 'Wheeled Bag' },
+    // Bedding & Shelter
+    { name: 'Blanket' },
+    { name: 'Sleeping Bag' },
+    { name: 'Plastic Tarp' },
+    { name: 'Tent' },
+    { name: 'Bed Pillow' },
+    // Warmth
+    { name: 'Hand Warmers' },
+  ],
+  'Hygiene Items': [
+    // Hair care
+    { name: 'Shampoo' },
+    { name: 'Conditioner' },
+    // Bathroom essentials
+    { name: 'Toilet Paper' },
+    { name: 'Toothbrush' },
+    { name: 'Toothpaste' },
+    // Personal care
+    { name: 'Deodorant' },
+    { name: 'Razors' },
+    { name: 'Bar Soap' },
+    { name: 'Body Wash' },
+    // Health
+    { name: 'Cough Syrup' },
+    { name: 'Cough Drops' },
+    // Cleaning
+    { name: 'Wet Wipes' },
+    { name: 'Lotion' },
+    // Bug protection
+    { name: 'Bug Wipes' },
+    { name: 'Bug Spray' },
+  ],
+  'Canned Goods': [
+    { name: 'Canned Fruit' },
+    { name: 'Tuna' },
+    { name: 'Beef Stew' },
+    { name: 'Chili' },
+    { name: 'Pork & Beans' },
+    { name: 'Ravioli' },
+    { name: 'Spaghetti' },
+    { name: 'Spam' },
+    { name: 'Vienna Sausage' },
+    { name: 'Canned Soup' },
+  ],
+};
+
+// ============================================
+// INTERFACES
+// ============================================
+
+interface RouteStopJSON {
+  number: number;
+  name: string;
+  location?: string;
+  state: string;
+  notes?: string;
+  coordinates: [number, number];
+}
+
+interface RouteJSON {
+  name: string;
+  stops: RouteStopJSON[];
+}
+
+interface RoutesJSON {
+  routes: RouteJSON[];
+}
+
+// ============================================
+// SEED FUNCTION
+// ============================================
+
+async function seed() {
+  console.log('🌱 Starting comprehensive database seed...\n');
+
+  try {
+    // ==========================================
+    // 0. CLEAR EXISTING DATA
+    // ==========================================
+    console.log('🗑️  Clearing existing data...');
+
+    // Delete in order of dependencies (children first, then parents)
+    await db.delete(distribution);
+    console.log('  ✓ Cleared distributions');
+
+    await db.delete(routeRun);
+    console.log('  ✓ Cleared route runs');
+
+    await db.delete(routeStop);
+    console.log('  ✓ Cleared route stops');
+
+    await db.delete(route);
+    console.log('  ✓ Cleared routes');
+
+    await db.delete(warehouseInventory);
+    console.log('  ✓ Cleared warehouse inventory');
+
+    await db.delete(itemType);
+    console.log('  ✓ Cleared item types');
+
+    await db.delete(category);
+    console.log('  ✓ Cleared categories');
+
+    await db.delete(homelessPerson);
+    console.log('  ✓ Cleared homeless persons');
+
+    await db.delete(driver);
+    console.log('  ✓ Cleared drivers');
+
+    await db.delete(van);
+    console.log('  ✓ Cleared vans');
+
+    console.log('  → All tables cleared!\n');
+
+    // ==========================================
+    // 1. SEED ROUTES AND STOPS
+    // ==========================================
+    console.log('📍 Seeding routes and stops...');
+    const data = routesData as RoutesJSON;
+    const insertedRoutes: { id: string; name: string }[] = [];
+    const insertedStops: { id: string; routeId: string; name: string }[] = [];
+
+    for (const routeData of data.routes) {
+      const [insertedRoute] = await db
+        .insert(route)
+        .values({ name: routeData.name })
+        .returning();
+
+      insertedRoutes.push(insertedRoute);
+      console.log(`  ✓ Route: ${routeData.name}`);
+
+      for (const stop of routeData.stops) {
+        const [insertedStop] = await db.insert(routeStop).values({
+          routeId: insertedRoute.id,
+          stopNumber: stop.number,
+          name: stop.name,
+          locationDescription: stop.location || stop.notes || null,
+          city: 'Kansas City',
+          state: stop.state,
+          latitude: stop.coordinates[0].toString(),
+          longitude: stop.coordinates[1].toString(),
+        }).returning();
+
+        insertedStops.push({ id: insertedStop.id, routeId: insertedRoute.id, name: insertedStop.name });
+      }
+    }
+    console.log(`  → Created ${insertedRoutes.length} routes with ${insertedStops.length} stops\n`);
+
+    // ==========================================
+    // 2. SEED HOMELESS PERSONS
+    // ==========================================
+    console.log('👥 Seeding homeless persons...');
+    const insertedPersons: { id: string; firstName: string; gender: 'male' | 'female' | 'none' }[] = [];
+
+    // Create 60 homeless persons
+    for (let i = 0; i < 60; i++) {
+      const gender = randomElement(['male', 'female', 'none'] as const);
+      let firstName: string;
+
+      if (gender === 'male') {
+        firstName = randomElement(maleFirstNames);
+      } else if (gender === 'female') {
+        firstName = randomElement(femaleFirstNames);
+      } else {
+        firstName = randomElement([...maleFirstNames, ...femaleFirstNames]);
+      }
+
+      const [person] = await db.insert(homelessPerson).values({
+        firstName,
+        gender,
+        ssnLast4Hash: Math.random() > 0.7 ? `hash_${randomInt(1000, 9999)}` : null,
+      }).returning();
+
+      insertedPersons.push({ id: person.id, firstName: person.firstName, gender: person.gender || 'none' });
+    }
+    console.log(`  → Created ${insertedPersons.length} homeless persons\n`);
+
+    // ==========================================
+    // 3. SEED CATEGORIES
+    // ==========================================
+    console.log('📦 Seeding categories...');
+    const insertedCategories: { id: string; name: string }[] = [];
+
+    for (const cat of categoryData) {
+      const [insertedCat] = await db.insert(category).values({
+        name: cat.name,
+        description: cat.description,
+      }).returning();
+
+      insertedCategories.push(insertedCat);
+      console.log(`  ✓ Category: ${cat.name}`);
+    }
+    console.log('');
+
+    // ==========================================
+    // 4. SEED ITEM TYPES
+    // ==========================================
+    console.log('🏷️ Seeding item types...');
+    const insertedItemTypes: { id: string; name: string; categoryId: string; gender: 'male' | 'female' | 'none'; size: string | null }[] = [];
+
+    for (const cat of insertedCategories) {
+      const items = itemTypeData[cat.name] || [];
+      for (const item of items) {
+        const sizes = item.sizes || [null];
+        // If genders not specified, use [null] to create one item with null gender
+        const genders = item.genders || [null];
+
+        for (const size of sizes) {
+          for (const gender of genders) {
+            const needLevel = randomElement(['low', 'mid', 'high'] as const);
+            const [insertedItem] = await db.insert(itemType).values({
+              name: item.name,
+              categoryId: cat.id,
+              gender: gender, // Will be null for non-clothing items
+              size: size || null,
+              needLevel,
+              notes: Math.random() > 0.8 ? 'Popular item - restock frequently' : null,
+            }).returning();
+
+            insertedItemTypes.push({
+              id: insertedItem.id,
+              name: insertedItem.name,
+              categoryId: cat.id,
+              gender: insertedItem.gender || 'none',
+              size: insertedItem.size,
+            });
+          }
+        }
+      }
+    }
+    console.log(`  → Created ${insertedItemTypes.length} item types\n`);
+
+    // ==========================================
+    // 5. SEED WAREHOUSE INVENTORY
+    // ==========================================
+    console.log('🏭 Seeding warehouse inventory...');
+    let inventoryCount = 0;
+
+    for (const item of insertedItemTypes) {
+      const inventoryLevel = randomElement(['low', 'mid', 'high'] as const);
+      await db.insert(warehouseInventory).values({
+        itemTypeId: item.id,
+        inventoryLevel,
+      });
+      inventoryCount++;
+    }
+    console.log(`  → Created ${inventoryCount} inventory records\n`);
+
+    // ==========================================
+    // 6. SEED VANS
+    // ==========================================
+    console.log('🚐 Seeding vans...');
+    const insertedVans: { id: string; name: string }[] = [];
+
+    for (let i = 0; i < vanNames.length; i++) {
+      const [insertedVan] = await db.insert(van).values({
+        name: vanNames[i],
+        licensePlate: licensePlates[i],
+      }).returning();
+
+      insertedVans.push(insertedVan);
+      console.log(`  ✓ Van: ${vanNames[i]} (${licensePlates[i]})`);
+    }
+    console.log('');
+
+    // ==========================================
+    // 7. SEED DRIVERS
+    // ==========================================
+    console.log('🧑‍✈️ Seeding drivers...');
+    const insertedDrivers: { id: string; firstName: string; lastName: string | null }[] = [];
+
+    const driverData = [
+      { first: 'Marcus', last: 'Thompson', phone: '816-555-0101' },
+      { first: 'Sarah', last: 'Chen', phone: '816-555-0102' },
+      { first: 'David', last: 'Rodriguez', phone: '913-555-0103' },
+      { first: 'Emily', last: 'Williams', phone: '816-555-0104' },
+      { first: 'James', last: 'Brown', phone: '913-555-0105' },
+      { first: 'Maria', last: 'Garcia', phone: '816-555-0106' },
+      { first: 'Robert', last: 'Johnson', phone: '816-555-0107' },
+      { first: 'Lisa', last: 'Davis', phone: '913-555-0108' },
+    ];
+
+    for (const d of driverData) {
+      const [insertedDriver] = await db.insert(driver).values({
+        firstName: d.first,
+        lastName: d.last,
+        phone: d.phone,
+      }).returning();
+
+      insertedDrivers.push(insertedDriver);
+      console.log(`  ✓ Driver: ${d.first} ${d.last}`);
+    }
+    console.log('');
+
+    // ==========================================
+    // 8. SEED ROUTE RUNS
+    // ==========================================
+    console.log('🗓️ Seeding route runs...');
+    const insertedRouteRuns: { id: string; routeId: string; runDate: string }[] = [];
+
+    // Create route runs for the past 30 days
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Create 40 route runs across different dates
+    for (let i = 0; i < 40; i++) {
+      const runDate = randomDate(thirtyDaysAgo, today);
+      const selectedRoute = randomElement(insertedRoutes);
+      const selectedDriver = randomElement(insertedDrivers);
+      const selectedVan = randomElement(insertedVans);
+
+      const notes = Math.random() > 0.7
+        ? randomElement([
+          'Good weather, high turnout',
+          'Rain - distributed rain ponchos',
+          'Cold day - many requests for blankets',
+          'Distributed winter supplies',
+          'New faces at several stops',
+          'Busy route - ran low on socks',
+        ])
+        : null;
+
+      const [insertedRun] = await db.insert(routeRun).values({
+        routeId: selectedRoute.id,
+        runDate: formatDate(runDate),
+        driverId: selectedDriver.id,
+        vanId: selectedVan.id,
+        notes,
+      }).returning();
+
+      insertedRouteRuns.push({
+        id: insertedRun.id,
+        routeId: selectedRoute.id,
+        runDate: formatDate(runDate),
+      });
+    }
+    console.log(`  → Created ${insertedRouteRuns.length} route runs\n`);
+
+    // ==========================================
+    // 9. SEED DISTRIBUTIONS
+    // ==========================================
+    console.log('📋 Seeding distributions...');
+    let distributionCount = 0;
+
+    // For each route run, create some distributions
+    for (const run of insertedRouteRuns) {
+      // Get stops for this route
+      const routeStops = insertedStops.filter(s => s.routeId === run.routeId);
+
+      // Create 5-15 distributions per route run
+      const numDistributions = randomInt(5, 15);
+
+      for (let i = 0; i < numDistributions; i++) {
+        const selectedStop = randomElement(routeStops);
+        const selectedPerson = randomElement(insertedPersons);
+        const selectedItem = randomElement(insertedItemTypes);
+        const quantity = randomInt(1, 3);
+
+        await db.insert(distribution).values({
+          routeRunId: run.id,
+          routeStopId: selectedStop.id,
+          homelessPersonId: selectedPerson.id,
+          itemTypeId: selectedItem.id,
+          quantity,
+        });
+
+        distributionCount++;
+      }
+    }
+    console.log(`  → Created ${distributionCount} distribution records\n`);
+
+    // ==========================================
+    // SUMMARY
+    // ==========================================
+    console.log('═══════════════════════════════════════════');
+    console.log('✅ DATABASE SEEDING COMPLETED SUCCESSFULLY!');
+    console.log('═══════════════════════════════════════════');
+    console.log(`📍 Routes:            ${insertedRoutes.length}`);
+    console.log(`📍 Route Stops:       ${insertedStops.length}`);
+    console.log(`👥 Homeless Persons:  ${insertedPersons.length}`);
+    console.log(`📦 Categories:        ${insertedCategories.length}`);
+    console.log(`🏷️  Item Types:        ${insertedItemTypes.length}`);
+    console.log(`🏭 Inventory Records: ${inventoryCount}`);
+    console.log(`🚐 Vans:              ${insertedVans.length}`);
+    console.log(`🧑‍✈️ Drivers:           ${insertedDrivers.length}`);
+    console.log(`🗓️  Route Runs:        ${insertedRouteRuns.length}`);
+    console.log(`📋 Distributions:     ${distributionCount}`);
+    console.log('═══════════════════════════════════════════\n');
+
+  } catch (error) {
+    console.error('❌ Error seeding database:', error);
+    throw error;
+  } finally {
+    await pool.end();
+  }
+}
+
+seed();
