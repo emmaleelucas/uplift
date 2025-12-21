@@ -33,39 +33,6 @@ export const genderEnum = pgEnum("gender", [
     "none",
 ]);
 
-// Clothing sizes
-export const clothingSizeEnum = pgEnum("clothing_size", [
-    // One size (for beanies, baseball caps)
-    "one_size",
-    // Standard abbreviations (for most clothing)
-    "XS",
-    "S",
-    "M",
-    "L",
-    "XL",
-    "2XL",
-    "3XL",
-    "4XL",
-    // Shoe sizes (men's/women's)
-    "6",
-    "6.5",
-    "7",
-    "7.5",
-    "8",
-    "8.5",
-    "9",
-    "9.5",
-    "10",
-    "10.5",
-    "11",
-    "11.5",
-    "12",
-    "12.5",
-    "13",
-    "13.5",
-    "14",
-]);
-
 /* ======================
    PEOPLE
 ====================== */
@@ -73,6 +40,7 @@ export const clothingSizeEnum = pgEnum("clothing_size", [
 export const homelessPerson = pgTable("homeless_person", {
     id: uuid("id").primaryKey().defaultRandom(),
     firstName: text("first_name").notNull(),
+    gender: genderEnum("gender").default("none"),
     ssnLast4Hash: text("ssn_last4_hash"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -94,7 +62,7 @@ export const itemType = pgTable("item_type", {
         .references(() => category.id)
         .notNull(),
     gender: genderEnum("gender").default("none"),
-    size: clothingSizeEnum("size"),  // Uses enum for consistent sizing
+    size: text("size"),
     needLevel: needLevelEnum("need_level").notNull(),
     notes: text("notes"),
 });
@@ -178,49 +146,24 @@ export const routeRun = pgTable("route_run", {
 
 /* ======================
    DISTRIBUTION
-   (Parent record for each service encounter)
 ====================== */
 
 export const distribution = pgTable("distribution", {
     id: uuid("id").primaryKey().defaultRandom(),
-
-    // Person served (required)
+    routeRunId: uuid("route_run_id")
+        .references(() => routeRun.id)
+        .notNull(),
+    routeStopId: uuid("route_stop_id")
+        .references(() => routeStop.id)
+        .notNull(),
     homelessPersonId: uuid("homeless_person_id")
         .references(() => homelessPerson.id)
-        .notNull(),
-
-    // Meal tracking
-    mealServed: integer("meal_served").default(0).notNull(), // 0 = no, 1 = yes
-
-    // GPS location (captured from device)
-    latitude: numeric("latitude", { precision: 9, scale: 6 }),
-    longitude: numeric("longitude", { precision: 9, scale: 6 }),
-
-    // Route/Stop association (optional - can be auto-matched via geofence)
-    routeStopId: uuid("route_stop_id")
-        .references(() => routeStop.id),
-    routeRunId: uuid("route_run_id")
-        .references(() => routeRun.id),
-
-    // Timestamps
-    distributedAt: timestamp("distributed_at").defaultNow().notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-/* ======================
-   DISTRIBUTION ITEM
-   (Items given during a distribution)
-====================== */
-
-export const distributionItem = pgTable("distribution_item", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    distributionId: uuid("distribution_id")
-        .references(() => distribution.id)
         .notNull(),
     itemTypeId: uuid("item_type_id")
         .references(() => itemType.id)
         .notNull(),
     quantity: integer("quantity").default(1).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 /* ======================
@@ -301,30 +244,21 @@ export const routeRunRelations = relations(routeRun, ({ one, many }) => ({
 }));
 
 /* Distribution */
-export const distributionRelations = relations(distribution, ({ one, many }) => ({
-    homelessPerson: one(homelessPerson, {
-        fields: [distribution.homelessPersonId],
-        references: [homelessPerson.id],
-    }),
-    items: many(distributionItem),
-    routeStop: one(routeStop, {
-        fields: [distribution.routeStopId],
-        references: [routeStop.id],
-    }),
+export const distributionRelations = relations(distribution, ({ one }) => ({
     routeRun: one(routeRun, {
         fields: [distribution.routeRunId],
         references: [routeRun.id],
     }),
-}));
-
-/* Distribution Item */
-export const distributionItemRelations = relations(distributionItem, ({ one }) => ({
-    distribution: one(distribution, {
-        fields: [distributionItem.distributionId],
-        references: [distribution.id],
+    routeStop: one(routeStop, {
+        fields: [distribution.routeStopId],
+        references: [routeStop.id],
+    }),
+    homelessPerson: one(homelessPerson, {
+        fields: [distribution.homelessPersonId],
+        references: [homelessPerson.id],
     }),
     itemType: one(itemType, {
-        fields: [distributionItem.itemTypeId],
+        fields: [distribution.itemTypeId],
         references: [itemType.id],
     }),
 }));

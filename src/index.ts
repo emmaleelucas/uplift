@@ -12,6 +12,7 @@ import {
   driver,
   routeRun,
   distribution,
+  distributionItem,
 } from './db/schema';
 import routesData from '../routes.json';
 
@@ -81,35 +82,43 @@ const categoryData = [
   { name: 'Canned Goods', description: 'Non-perishable canned food items - pop-top preferred, no glass, no expired food' },
 ];
 
-// Clothing sizes
-const clothingSizes = ['S', 'M', 'L', 'XL', 'XXL'];
-const pantSizes = ['28', '30', '32', '34', '36', '38', '40'];
-const shoeSizes = ['7', '8', '9', '10', '11', '12', '13'];
+// Clothing sizes - using enum values
+const standardSizes: readonly string[] = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
+const shoeSizes: readonly string[] = ['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '13.5', '14'];
+const oneSize: readonly string[] = ['one_size'];
 
-const itemTypeData: { [key: string]: { name: string; sizes?: string[]; genders?: ('male' | 'female' | 'none')[] }[] } = {
+// Gender options
+const allGenders: readonly ('male' | 'female' | 'none')[] = ['male', 'female', 'none'];
+const unisexOnly: readonly ('male' | 'female' | 'none')[] = ['none'];
+
+const itemTypeData: { [key: string]: { name: string; sizes?: readonly string[]; genders?: readonly ('male' | 'female' | 'none')[] }[] } = {
   'Clothing': [
-    // Shirts
-    { name: 'Short Sleeve Shirt', sizes: clothingSizes, genders: ['male', 'female'] },
-    { name: 'Long Sleeve Shirt', sizes: clothingSizes, genders: ['male', 'female'] },
-    // Pants
-    { name: 'Jeans', sizes: pantSizes, genders: ['male', 'female'] },
-    { name: 'Pants', sizes: pantSizes, genders: ['male', 'female'] },
-    { name: 'Sweat Pants', sizes: clothingSizes, genders: ['male', 'female'] },
-    // Headwear
-    { name: 'Baseball Cap', sizes: ['One Size'], genders: ['none'] },
-    { name: 'Beanie', sizes: ['One Size'], genders: ['none'] },
+    // Shirts - all genders
+    { name: 'T-Shirt', sizes: standardSizes, genders: allGenders },
+    { name: 'Long Sleeve Shirt', sizes: standardSizes, genders: allGenders },
+    // Pants - all genders  
+    { name: 'Jeans', sizes: standardSizes, genders: allGenders },
+    { name: 'Pants', sizes: standardSizes, genders: allGenders },
+    { name: 'Sweat Pants', sizes: standardSizes, genders: allGenders },
+    { name: 'Shorts', sizes: standardSizes, genders: allGenders },
+    // Headwear - unisex only
+    { name: 'Baseball Cap', sizes: oneSize, genders: unisexOnly },
+    { name: 'Beanie', sizes: oneSize, genders: unisexOnly },
     // Footwear
-    { name: 'Socks', sizes: ['S', 'M', 'L'], genders: ['male', 'female'] },
-    { name: 'Boots', sizes: shoeSizes, genders: ['male', 'female'] },
-    { name: 'Sneakers', sizes: shoeSizes, genders: ['male', 'female'] },
-    // Outerwear
-    { name: 'Hoodie', sizes: clothingSizes, genders: ['male', 'female'] },
-    { name: 'Jacket', sizes: clothingSizes, genders: ['male', 'female'] },
-    { name: 'Coat', sizes: clothingSizes, genders: ['male', 'female'] },
-    // Accessories
-    { name: 'Gloves', sizes: ['S', 'M', 'L', 'XL'], genders: ['male', 'female'] },
-    // Undergarments
-    { name: 'Underwear', sizes: clothingSizes, genders: ['male', 'female'] },
+    { name: 'Socks', sizes: standardSizes, genders: unisexOnly },  // unisex only
+    { name: 'Boots', sizes: shoeSizes, genders: allGenders },
+    { name: 'Sneakers', sizes: shoeSizes, genders: allGenders },
+    { name: 'Sandals', sizes: shoeSizes, genders: allGenders },
+    // Outerwear - all genders
+    { name: 'Hoodie', sizes: standardSizes, genders: allGenders },
+    { name: 'Jacket', sizes: standardSizes, genders: allGenders },
+    { name: 'Coat', sizes: standardSizes, genders: allGenders },
+    { name: 'Sweater', sizes: standardSizes, genders: allGenders },
+    // Accessories - unisex only
+    { name: 'Gloves', sizes: standardSizes, genders: unisexOnly },
+    { name: 'Scarf', sizes: oneSize, genders: unisexOnly },
+    // Undergarments - all genders
+    { name: 'Underwear', sizes: standardSizes, genders: allGenders },
   ],
   'Basic Needs': [
     // Water containers
@@ -215,6 +224,9 @@ async function seed() {
     console.log('🗑️  Clearing existing data...');
 
     // Delete in order of dependencies (children first, then parents)
+    await db.delete(distributionItem);
+    console.log('  ✓ Cleared distribution items');
+
     await db.delete(distribution);
     console.log('  ✓ Cleared distributions');
 
@@ -285,28 +297,21 @@ async function seed() {
     // 2. SEED HOMELESS PERSONS
     // ==========================================
     console.log('👥 Seeding homeless persons...');
-    const insertedPersons: { id: string; firstName: string; gender: 'male' | 'female' | 'none' }[] = [];
+    const insertedPersons: { id: string; firstName: string }[] = [];
 
     // Create 60 homeless persons
     for (let i = 0; i < 60; i++) {
-      const gender = randomElement(['male', 'female', 'none'] as const);
-      let firstName: string;
-
-      if (gender === 'male') {
-        firstName = randomElement(maleFirstNames);
-      } else if (gender === 'female') {
-        firstName = randomElement(femaleFirstNames);
-      } else {
-        firstName = randomElement([...maleFirstNames, ...femaleFirstNames]);
-      }
+      const isMale = Math.random() > 0.5;
+      const firstName = isMale
+        ? randomElement(maleFirstNames)
+        : randomElement(femaleFirstNames);
 
       const [person] = await db.insert(homelessPerson).values({
         firstName,
-        gender,
         ssnLast4Hash: Math.random() > 0.7 ? `hash_${randomInt(1000, 9999)}` : null,
       }).returning();
 
-      insertedPersons.push({ id: person.id, firstName: person.firstName, gender: person.gender || 'none' });
+      insertedPersons.push({ id: person.id, firstName: person.firstName });
     }
     console.log(`  → Created ${insertedPersons.length} homeless persons\n`);
 
@@ -347,7 +352,7 @@ async function seed() {
               name: item.name,
               categoryId: cat.id,
               gender: gender, // Will be null for non-clothing items
-              size: size || null,
+              size: (size || null) as typeof itemType.$inferInsert['size'],
               needLevel,
               notes: Math.random() > 0.8 ? 'Popular item - restock frequently' : null,
             }).returning();
@@ -491,11 +496,19 @@ async function seed() {
         const selectedPerson = randomElement(insertedPersons);
         const selectedItem = randomElement(insertedItemTypes);
         const quantity = randomInt(1, 3);
+        const mealServed = Math.random() > 0.5 ? 1 : 0;
 
-        await db.insert(distribution).values({
+        // Create the distribution record
+        const [insertedDistribution] = await db.insert(distribution).values({
           routeRunId: run.id,
           routeStopId: selectedStop.id,
           homelessPersonId: selectedPerson.id,
+          mealServed,
+        }).returning();
+
+        // Create the distribution item record
+        await db.insert(distributionItem).values({
+          distributionId: insertedDistribution.id,
           itemTypeId: selectedItem.id,
           quantity,
         });
