@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
-    ChevronLeft, User, MapPin, Clock, Utensils, Package,
-    Plus, X, Check, Loader2, AlertCircle, Search, Hash, UserCheck, UserPlus, CheckCircle2, Lock,
-    Shirt, Droplets, ShoppingBag, Apple, ChevronRight, ArrowLeft
+    ChevronLeft, Clock, User, Hash, Loader2, UserPlus, UserCheck,
+    Utensils, Package, Plus, Minus, X, Search, MapPin, Check,
+    ChevronDown, ChevronRight, Shirt, Sparkles, Apple, Bed
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -19,8 +19,18 @@ interface ItemType {
     id: string;
     name: string;
     category_id: string;
-    gender: string | null;
     size: string | null;
+    gender: string | null;
+}
+
+interface CheckedInPerson {
+    id: string;
+    distributionIds: string[]; // All distribution IDs for this person today
+    firstName: string;
+    ssnLast4: string; // Last 4 digits of SSN for identification
+    mealCount: number;
+    items: { id: string; itemTypeId: string; name: string; quantity: number }[];
+    checkedInAt: string;
 }
 
 interface SelectedItem {
@@ -30,327 +40,501 @@ interface SelectedItem {
     quantity: number;
 }
 
-interface LocationData {
-    latitude: number;
-    longitude: number;
-    accuracy: number;
-    timestamp: Date;
-}
-
-interface FoundPerson {
-    id: string;
-    firstName: string;
-    visitCount: number;
-    lastVisit: string | null;
-}
+type ActiveTab = 'checkin' | 'serve';
 
 export default function DistributingPage() {
-    // Form state
+    // Tab state
+    const [activeTab, setActiveTab] = useState<ActiveTab>('checkin');
+
+    // Check-in form state
     const [firstName, setFirstName] = useState("");
     const [ssnLast4, setSsnLast4] = useState("");
-    const [mealServed, setMealServed] = useState(false);
-    const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
+    const [checkInMeals, setCheckInMeals] = useState(0);
+    const [checkInItems, setCheckInItems] = useState<SelectedItem[]>([]);
+    const [showCheckInItemPicker, setShowCheckInItemPicker] = useState(false);
+    const [checkingIn, setCheckingIn] = useState(false);
+    const [checkInSuccess, setCheckInSuccess] = useState(false);
+    const [alreadyCheckedInPerson, setAlreadyCheckedInPerson] = useState<CheckedInPerson | null>(null);
+    const [checkingExisting, setCheckingExisting] = useState(false);
 
-    // Location state
-    const [location, setLocation] = useState<LocationData | null>(null);
-    const [locationError, setLocationError] = useState<string | null>(null);
-    const [loadingLocation, setLoadingLocation] = useState(true);
+    // Serve tab state
+    const [checkedInPeople, setCheckedInPeople] = useState<CheckedInPerson[]>([]);
+    const [selectedPerson, setSelectedPerson] = useState<CheckedInPerson | null>(null);
+    const [loadingPeople, setLoadingPeople] = useState(false);
 
-    // Data state
+    // Item picker state
+    const [showItemPicker, setShowItemPicker] = useState(false);
     const [categories, setCategories] = useState<Category[]>([]);
     const [itemTypes, setItemTypes] = useState<ItemType[]>([]);
-    const [loadingData, setLoadingData] = useState(true);
-
-    // UI state
-    const [showItemPicker, setShowItemPicker] = useState(false);
-    const [itemSearchQuery, setItemSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-    const [submitting, setSubmitting] = useState(false);
-    const [submitSuccess, setSubmitSuccess] = useState(false);
-    const [submitError, setSubmitError] = useState<string | null>(null);
+    const [itemSearch, setItemSearch] = useState("");
+    const [pendingItems, setPendingItems] = useState<SelectedItem[]>([]);
 
-    // Clothing selection flow state
-    const [clothingStep, setClothingStep] = useState<'type' | 'gender' | 'size' | null>(null);
+    // Clothing flow state
+    const [clothingStep, setClothingStep] = useState<'type' | 'gender' | 'size'>('type');
     const [selectedClothingType, setSelectedClothingType] = useState<string | null>(null);
     const [selectedGender, setSelectedGender] = useState<string | null>(null);
 
-    // Person lookup state
-    const [foundPerson, setFoundPerson] = useState<FoundPerson | null>(null);
-    const [searchingPerson, setSearchingPerson] = useState(false);
-    const [searchPending, setSearchPending] = useState(false);
+    // Meal update state
+    const [updatingMeals, setUpdatingMeals] = useState(false);
 
-    // Current time state (to avoid SSR issues with new Date())
-    const [currentTime, setCurrentTime] = useState<string>("");
+    // Location state
+    const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+    const [routeStopId, setRouteStopId] = useState<string | null>(null);
+    const [routeRunId, setRouteRunId] = useState<string | null>(null);
 
-    // Check if form is ready for meal/items
-    const isFormReady = firstName.trim().length >= 1 && ssnLast4.length === 4;
+    // Current time
+    const [currentTime, setCurrentTime] = useState("");
 
-    // Set current time on client side
+    const supabase = createClient();
+
+    // Get current time
     useEffect(() => {
-        const formatTime = (date: Date) => {
-            return date.toLocaleTimeString('en-US', {
+        const updateTime = () => {
+            setCurrentTime(new Date().toLocaleTimeString('en-US', {
                 hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
+                minute: '2-digit'
+            }));
         };
-
-        setCurrentTime(formatTime(new Date()));
-
-        // Update time every minute
-        const interval = setInterval(() => {
-            setCurrentTime(formatTime(new Date()));
-        }, 60000);
-
+        updateTime();
+        const interval = setInterval(updateTime, 60000);
         return () => clearInterval(interval);
     }, []);
 
-    // Get current location on mount
+    // Get location
     useEffect(() => {
-        if ("geolocation" in navigator) {
+        if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    setLocation({
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        accuracy: position.coords.accuracy,
-                        timestamp: new Date(),
-                    });
-                    setLoadingLocation(false);
+                (pos) => {
+                    setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
                 },
-                (error) => {
-                    setLocationError(
-                        error.code === 1
-                            ? "Location access denied. Please enable location services."
-                            : "Unable to get location. Please try again."
-                    );
-                    setLoadingLocation(false);
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+                () => { /* ignore error */ }
             );
-        } else {
-            setLocationError("Geolocation is not supported by your browser.");
-            setLoadingLocation(false);
         }
     }, []);
+
+    // Calculate distance between two coordinates in meters (Haversine formula)
+    const getDistanceInMeters = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+        const R = 6371000; // Earth's radius in meters
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    };
 
     // Fetch categories and item types
     useEffect(() => {
-        async function fetchData() {
-            try {
-                const supabase = createClient();
-
-                const { data: categoriesData, error: categoriesError } = await supabase
-                    .from('category')
-                    .select('*')
-                    .order('name');
-
-                if (categoriesError) throw categoriesError;
-                setCategories(categoriesData || []);
-
-                const { data: itemTypesData, error: itemTypesError } = await supabase
-                    .from('item_type')
-                    .select('*')
-                    .order('name');
-
-                if (itemTypesError) throw itemTypesError;
-                setItemTypes(itemTypesData || []);
-
-            } catch (err) {
-                console.error('Error fetching data:', err);
-            } finally {
-                setLoadingData(false);
-            }
-        }
-
+        const fetchData = async () => {
+            const { data: cats } = await supabase.from('category').select('*').order('name');
+            const { data: items } = await supabase.from('item_type').select('*').order('name');
+            setCategories(cats || []);
+            setItemTypes(items || []);
+        };
         fetchData();
     }, []);
 
-    // Search for existing person when name and SSN are entered
+    // Fetch today's checked-in people (grouped by person, within 50m of current location)
+    const fetchCheckedInPeople = async () => {
+        setLoadingPeople(true);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const { data: distributions } = await supabase
+            .from('distribution')
+            .select(`
+                id,
+                created_at,
+                meal_served,
+                latitude,
+                longitude,
+                homeless_person:homeless_person_id (id, first_name, ssn_last4_hash)
+            `)
+            .gte('created_at', today.toISOString())
+            .order('created_at', { ascending: false });
+
+        if (distributions) {
+            // Filter to only distributions within 50 meters of current location
+            const nearbyDistributions = currentLocation
+                ? distributions.filter(dist => {
+                    if (!dist.latitude || !dist.longitude) return false;
+                    const distance = getDistanceInMeters(
+                        currentLocation.lat,
+                        currentLocation.lng,
+                        dist.latitude,
+                        dist.longitude
+                    );
+                    return distance <= 50; // 50 meters
+                })
+                : distributions;
+
+            // Group by person ID
+            const personMap = new Map<string, CheckedInPerson>();
+
+            for (const dist of nearbyDistributions) {
+                const person = dist.homeless_person as unknown as { id: string; first_name: string; ssn_last4_hash: string };
+
+                // Get items for this distribution
+                const { data: distItems } = await supabase
+                    .from('distribution_item')
+                    .select(`
+                        id,
+                        quantity,
+                        item_type_id,
+                        item_type:item_type_id (name)
+                    `)
+                    .eq('distribution_id', dist.id);
+
+                const items = (distItems || []).map((item: unknown) => {
+                    const typedItem = item as { id: string; quantity: number; item_type_id: string; item_type: { name: string } | null };
+                    return {
+                        id: typedItem.id,
+                        itemTypeId: typedItem.item_type_id,
+                        name: typedItem.item_type?.name || 'Unknown',
+                        quantity: typedItem.quantity
+                    };
+                });
+
+                if (personMap.has(person.id)) {
+                    // Add to existing person
+                    const existing = personMap.get(person.id)!;
+                    existing.distributionIds.push(dist.id);
+                    existing.mealCount += dist.meal_served;
+                    // Add items (don't merge, keep separate for editing)
+                    existing.items.push(...items);
+                } else {
+                    // Create new person entry
+                    // Extract last 4 from hash format "hash_XXXX"
+                    const ssnLast4 = person.ssn_last4_hash?.replace('hash_', '') || '****';
+                    personMap.set(person.id, {
+                        id: person.id,
+                        distributionIds: [dist.id],
+                        firstName: person.first_name,
+                        ssnLast4,
+                        mealCount: dist.meal_served,
+                        items,
+                        checkedInAt: dist.created_at
+                    });
+                }
+            }
+
+            setCheckedInPeople(Array.from(personMap.values()));
+        }
+
+        setLoadingPeople(false);
+    };
+
+    // Fetch people when serve tab is active or location changes
     useEffect(() => {
-        const searchPerson = async () => {
-            // Only search if we have both name and full 4-digit SSN
+        if (activeTab === 'serve') {
+            fetchCheckedInPeople();
+        }
+    }, [activeTab, currentLocation]);
+
+    // Check if person is already checked in today when typing name/SSN
+    useEffect(() => {
+        const checkIfAlreadyCheckedIn = async () => {
             if (firstName.trim().length < 1 || ssnLast4.length !== 4) {
-                setFoundPerson(null);
-                setSearchPending(false);
+                setAlreadyCheckedInPerson(null);
                 return;
             }
 
-            setSearchPending(false);
-            setSearchingPerson(true);
+            setCheckingExisting(true);
 
             try {
-                const supabase = createClient();
                 const ssnHash = `hash_${ssnLast4}`;
-                const trimmedFirstName = firstName.trim().toLowerCase();
+                const trimmedName = firstName.trim().toLowerCase();
 
-                // Search for person with matching name and SSN
+                // First find the person
                 const { data: person } = await supabase
                     .from('homeless_person')
                     .select('id, first_name')
                     .eq('ssn_last4_hash', ssnHash)
-                    .ilike('first_name', trimmedFirstName)
+                    .ilike('first_name', trimmedName)
                     .single();
 
                 if (person) {
-                    // Found person - get their visit count
-                    const { count } = await supabase
-                        .from('distribution')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('homeless_person_id', person.id);
+                    // Check if they have a distribution today
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
 
-                    // Get last visit date
-                    const { data: lastDistribution } = await supabase
+                    const { data: todayDist } = await supabase
                         .from('distribution')
-                        .select('distributed_at')
+                        .select('id, meal_served')
                         .eq('homeless_person_id', person.id)
-                        .order('distributed_at', { ascending: false })
-                        .limit(1)
-                        .single();
+                        .gte('created_at', today.toISOString())
+                        .limit(1);
 
-                    setFoundPerson({
-                        id: person.id,
-                        firstName: person.first_name,
-                        visitCount: count || 0,
-                        lastVisit: lastDistribution?.distributed_at || null,
-                    });
+                    if (todayDist && todayDist.length > 0) {
+                        // They're already checked in - create a CheckedInPerson object
+                        setAlreadyCheckedInPerson({
+                            id: person.id,
+                            distributionIds: todayDist.map(d => d.id),
+                            firstName: person.first_name,
+                            ssnLast4: ssnLast4, // Use the SSN they just typed
+                            mealCount: todayDist.reduce((sum, d) => sum + d.meal_served, 0),
+                            items: [],
+                            checkedInAt: new Date().toISOString()
+                        });
+                    } else {
+                        setAlreadyCheckedInPerson(null);
+                    }
                 } else {
-                    setFoundPerson(null);
+                    setAlreadyCheckedInPerson(null);
                 }
-            } catch (err) {
-                // No person found or error - that's ok
-                setFoundPerson(null);
+            } catch {
+                setAlreadyCheckedInPerson(null);
             } finally {
-                setSearchingPerson(false);
+                setCheckingExisting(false);
             }
         };
 
-        // Mark search as pending during debounce (only if we have valid inputs)
-        if (firstName.trim().length >= 1 && ssnLast4.length === 4) {
-            setSearchPending(true);
-        }
-
-        // Debounce the search
-        const timeoutId = setTimeout(searchPerson, 500);
+        const timeoutId = setTimeout(checkIfAlreadyCheckedIn, 500);
         return () => clearTimeout(timeoutId);
     }, [firstName, ssnLast4]);
 
-    // Filter items based on search and category
-    const filteredItems = useMemo(() => {
-        let items = [...itemTypes];
+    // Go to existing person's record
+    const goToExistingRecord = async () => {
+        if (alreadyCheckedInPerson) {
+            await fetchCheckedInPeople();
+            setActiveTab('serve');
+            // Find and select the person in the list
+            setTimeout(() => {
+                const person = checkedInPeople.find(p => p.id === alreadyCheckedInPerson.id);
+                if (person) {
+                    setSelectedPerson(person);
+                }
+            }, 100);
+            // Reset check-in form
+            setFirstName("");
+            setSsnLast4("");
+            setCheckInMeals(0);
+            setCheckInItems([]);
+            setAlreadyCheckedInPerson(null);
+        }
+    };
 
-        if (selectedCategory) {
-            items = items.filter(item => item.category_id === selectedCategory);
+    // Check in a person
+    const handleCheckIn = async () => {
+        if (!firstName.trim() || ssnLast4.length !== 4) return;
+
+        setCheckingIn(true);
+
+        try {
+            const ssnHash = `hash_${ssnLast4}`;
+            const trimmedName = firstName.trim();
+
+            // Check if person exists
+            const { data: existingPerson } = await supabase
+                .from('homeless_person')
+                .select('id')
+                .eq('ssn_last4_hash', ssnHash)
+                .ilike('first_name', trimmedName.toLowerCase())
+                .single();
+
+            let personId: string;
+
+            if (existingPerson) {
+                personId = existingPerson.id;
+            } else {
+                // Create new person
+                const { data: newPerson, error } = await supabase
+                    .from('homeless_person')
+                    .insert({
+                        first_name: trimmedName,
+                        ssn_last4_hash: ssnHash
+                    })
+                    .select('id')
+                    .single();
+
+                if (error || !newPerson) {
+                    throw new Error('Failed to create person');
+                }
+                personId = newPerson.id;
+            }
+
+            // Create distribution record with meal count
+            const { data: distRecord } = await supabase
+                .from('distribution')
+                .insert({
+                    homeless_person_id: personId,
+                    meal_served: checkInMeals,
+                    latitude: currentLocation?.lat,
+                    longitude: currentLocation?.lng,
+                    route_stop_id: routeStopId,
+                    route_run_id: routeRunId
+                })
+                .select('id')
+                .single();
+
+            // Add items if any were selected
+            if (distRecord && checkInItems.length > 0) {
+                for (const item of checkInItems) {
+                    await supabase.from('distribution_item').insert({
+                        distribution_id: distRecord.id,
+                        item_type_id: item.itemTypeId,
+                        quantity: item.quantity
+                    });
+                }
+            }
+
+            // Show success and reset all check-in state
+            setCheckInSuccess(true);
+            setFirstName("");
+            setSsnLast4("");
+            setCheckInMeals(0);
+            setCheckInItems([]);
+
+            setTimeout(() => setCheckInSuccess(false), 2000);
+
+        } catch (err) {
+            console.error('Check-in error:', err);
+        } finally {
+            setCheckingIn(false);
+        }
+    };
+
+    // Update meal count (stores on first distribution record)
+    const updateMealCount = async (person: CheckedInPerson, delta: number) => {
+        const newCount = Math.max(0, person.mealCount + delta);
+
+        // Update local state immediately for snappy UI
+        setCheckedInPeople(prev => prev.map(p =>
+            p.id === person.id
+                ? { ...p, mealCount: newCount }
+                : p
+        ));
+
+        if (selectedPerson?.id === person.id) {
+            setSelectedPerson({ ...selectedPerson, mealCount: newCount });
         }
 
-        if (itemSearchQuery) {
-            const query = itemSearchQuery.toLowerCase();
-            items = items.filter(item =>
-                item.name.toLowerCase().includes(query) ||
-                (item.size && item.size.toLowerCase().includes(query))
-            );
+        // Sync to database in background (only update the first distribution record)
+        const primaryDistId = person.distributionIds[0];
+        await supabase
+            .from('distribution')
+            .update({ meal_served: newCount })
+            .eq('id', primaryDistId);
+    };
+
+    // Add items to person (attached to first distribution record)
+    const addItemsToPerson = async () => {
+        if (!selectedPerson || pendingItems.length === 0) return;
+
+        const primaryDistId = selectedPerson.distributionIds[0];
+
+        for (const item of pendingItems) {
+            await supabase.from('distribution_item').insert({
+                distribution_id: primaryDistId,
+                item_type_id: item.itemTypeId,
+                quantity: item.quantity
+            });
         }
 
-        return items;
-    }, [itemTypes, selectedCategory, itemSearchQuery]);
+        // Refresh the list
+        await fetchCheckedInPeople();
+        setPendingItems([]);
+        setShowItemPicker(false);
+    };
 
-    // Get category name by ID
+    // Update or remove an existing distribution item
+    const updateDistributionItem = async (itemId: string, newQuantity: number) => {
+        // Update local state immediately for snappy UI
+        const updateItems = (items: CheckedInPerson['items']) => {
+            if (newQuantity <= 0) {
+                return items.filter(i => i.id !== itemId);
+            } else {
+                return items.map(i => i.id === itemId ? { ...i, quantity: newQuantity } : i);
+            }
+        };
+
+        setCheckedInPeople(prev => prev.map(p => ({
+            ...p,
+            items: updateItems(p.items)
+        })));
+
+        if (selectedPerson) {
+            setSelectedPerson({
+                ...selectedPerson,
+                items: updateItems(selectedPerson.items)
+            });
+        }
+
+        // Sync to database in background
+        if (newQuantity <= 0) {
+            await supabase
+                .from('distribution_item')
+                .delete()
+                .eq('id', itemId);
+        } else {
+            await supabase
+                .from('distribution_item')
+                .update({ quantity: newQuantity })
+                .eq('id', itemId);
+        }
+    };
+
+    // Category helpers
     const getCategoryName = (categoryId: string) => {
         return categories.find(c => c.id === categoryId)?.name || "Unknown";
     };
 
-    // Add item to selection
-    const addItem = (item: ItemType) => {
-        const existing = selectedItems.find(si => si.itemTypeId === item.id);
-        if (existing) {
-            setSelectedItems(selectedItems.map(si =>
-                si.itemTypeId === item.id
-                    ? { ...si, quantity: si.quantity + 1 }
-                    : si
-            ));
-        } else {
-            // Check if this item type has multiple sizes
-            const sameNameItems = itemTypes.filter(i =>
-                i.name === item.name &&
-                i.category_id === item.category_id &&
-                i.gender === item.gender
-            );
-            const hasMultipleSizes = sameNameItems.length > 1;
+    const isClothingCategory = (categoryId: string) => {
+        const category = categories.find(c => c.id === categoryId);
+        return category?.name.toLowerCase() === 'clothing';
+    };
 
-            // Build display name - only show size if there are multiple size options
-            let displayName = item.name;
-            if (item.size && hasMultipleSizes) {
-                displayName += ` (${item.size})`;
-            }
-            if (item.gender && item.gender !== 'none') {
-                displayName += ` - ${item.gender}`;
-            }
-
-            setSelectedItems([...selectedItems, {
-                itemTypeId: item.id,
-                name: displayName,
-                category: getCategoryName(item.category_id),
-                quantity: 1,
-            }]);
+    const getCategoryIcon = (categoryName: string) => {
+        const name = categoryName.toLowerCase();
+        if (name.includes('clothing') || name.includes('clothes')) {
+            return { icon: Shirt, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900/30' };
         }
-        resetItemPicker();
+        if (name.includes('hygiene') || name.includes('toiletries')) {
+            return { icon: Sparkles, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900/30' };
+        }
+        if (name.includes('food') || name.includes('meal')) {
+            return { icon: Apple, color: 'text-green-500', bg: 'bg-green-100 dark:bg-green-900/30' };
+        }
+        if (name.includes('blanket') || name.includes('bedding') || name.includes('sleeping')) {
+            return { icon: Bed, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900/30' };
+        }
+        return { icon: Package, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-700' };
     };
 
-    // Reset item picker state
-    const resetItemPicker = () => {
-        setShowItemPicker(false);
-        setItemSearchQuery("");
-        setSelectedCategory(null);
-        setClothingStep(null);
-        setSelectedClothingType(null);
-        setSelectedGender(null);
-    };
-
-    // Get unique clothing types (base names without size/gender)
+    // Clothing helpers
     const getClothingTypes = () => {
-        const clothingCategory = categories.find(c => c.name.toLowerCase() === 'clothing');
-        if (!clothingCategory) return [];
-
-        const clothingItems = itemTypes.filter(item => item.category_id === clothingCategory.id);
-        const types = [...new Set(clothingItems.map(item => item.name))];
-        return types.sort();
+        const clothingCat = categories.find(c => c.name.toLowerCase() === 'clothing');
+        if (!clothingCat) return [];
+        const types = new Set(itemTypes.filter(i => i.category_id === clothingCat.id).map(i => i.name));
+        return Array.from(types).sort();
     };
 
-    // Get available genders for selected clothing type (ordered: male, female, unisex)
     const getClothingGenders = () => {
-        const clothingCategory = categories.find(c => c.name.toLowerCase() === 'clothing');
-        if (!clothingCategory || !selectedClothingType) return [];
-
-        const items = itemTypes.filter(
-            item => item.category_id === clothingCategory.id && item.name === selectedClothingType
+        const clothingCat = categories.find(c => c.name.toLowerCase() === 'clothing');
+        if (!clothingCat || !selectedClothingType) return [];
+        const genders = new Set(
+            itemTypes
+                .filter(i => i.category_id === clothingCat.id && i.name === selectedClothingType)
+                .map(i => i.gender || 'none')
         );
-        const gendersSet = new Set(items.map(item => item.gender).filter(Boolean));
-
-        // Order: male, female, none (unisex)
-        const orderedGenders: string[] = [];
-        if (gendersSet.has('male')) orderedGenders.push('male');
-        if (gendersSet.has('female')) orderedGenders.push('female');
-        if (gendersSet.has('none')) orderedGenders.push('none');
-
-        return orderedGenders;
+        const order = ['male', 'female', 'none'];
+        return order.filter(g => genders.has(g));
     };
 
-    // Get available sizes for selected clothing type and gender (ordered smallest to largest)
     const getClothingSizes = () => {
-        const clothingCategory = categories.find(c => c.name.toLowerCase() === 'clothing');
-        if (!clothingCategory || !selectedClothingType || !selectedGender) return [];
+        const clothingCat = categories.find(c => c.name.toLowerCase() === 'clothing');
+        if (!clothingCat || !selectedClothingType) return [];
 
-        const items = itemTypes.filter(
-            item => item.category_id === clothingCategory.id &&
-                item.name === selectedClothingType &&
-                item.gender === selectedGender
+        const items = itemTypes.filter(i =>
+            i.category_id === clothingCat.id &&
+            i.name === selectedClothingType &&
+            (selectedGender ? i.gender === selectedGender : true)
         );
 
-        // Size ordering
-        const sizeOrder = ['one_size', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL',
-            '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5',
-            '11', '11.5', '12', '12.5', '13', '13.5', '14'];
-
+        const sizeOrder = ['one_size', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '13', '14'];
         return items.sort((a, b) => {
             const aIndex = sizeOrder.indexOf(a.size || '');
             const bIndex = sizeOrder.indexOf(b.size || '');
@@ -358,29 +542,19 @@ export default function DistributingPage() {
         });
     };
 
-    // Select clothing type - auto-skip gender if only 1 option
     const selectClothingType = (type: string) => {
         setSelectedClothingType(type);
-
-        // Check how many genders are available for this type
-        const clothingCategory = categories.find(c => c.name.toLowerCase() === 'clothing');
-        if (!clothingCategory) return;
-
-        const items = itemTypes.filter(
-            item => item.category_id === clothingCategory.id && item.name === type
-        );
-        const gendersSet = new Set(items.map(item => item.gender).filter(Boolean));
-
-        if (gendersSet.size === 1) {
-            // Only 1 gender - auto-select it
-            const singleGender = [...gendersSet][0];
-            setSelectedGender(singleGender);
-
-            // Check if also only 1 size
-            const sizeItems = items.filter(i => i.gender === singleGender);
-            if (sizeItems.length === 1) {
-                // Only 1 size - add the item directly
-                addItem(sizeItems[0]);
+        const genders = getClothingGendersForType(type);
+        if (genders.length === 1) {
+            setSelectedGender(genders[0]);
+            const sizes = getClothingSizesForType(type, genders[0]);
+            if (sizes.length === 1) {
+                // Check which modal is open and add to the right list
+                if (showCheckInItemPicker) {
+                    addCheckInItem(sizes[0]);
+                } else {
+                    addPendingItem(sizes[0]);
+                }
             } else {
                 setClothingStep('size');
             }
@@ -389,713 +563,857 @@ export default function DistributingPage() {
         }
     };
 
-    // Select clothing gender - auto-skip size if only 1 option
+    const getClothingGendersForType = (type: string) => {
+        const clothingCat = categories.find(c => c.name.toLowerCase() === 'clothing');
+        if (!clothingCat) return [];
+        const genders = new Set(
+            itemTypes.filter(i => i.category_id === clothingCat.id && i.name === type).map(i => i.gender || 'none')
+        );
+        const order = ['male', 'female', 'none'];
+        return order.filter(g => genders.has(g));
+    };
+
+    const getClothingSizesForType = (type: string, gender: string) => {
+        const clothingCat = categories.find(c => c.name.toLowerCase() === 'clothing');
+        if (!clothingCat) return [];
+        return itemTypes.filter(i =>
+            i.category_id === clothingCat.id && i.name === type && i.gender === gender
+        );
+    };
+
     const selectClothingGender = (gender: string) => {
         setSelectedGender(gender);
-
-        const clothingCategory = categories.find(c => c.name.toLowerCase() === 'clothing');
-        if (!clothingCategory || !selectedClothingType) return;
-
-        const items = itemTypes.filter(
-            item => item.category_id === clothingCategory.id &&
-                item.name === selectedClothingType &&
-                item.gender === gender
-        );
-
-        if (items.length === 1) {
-            // Only 1 size - add the item directly
-            addItem(items[0]);
+        const sizes = getClothingSizesForType(selectedClothingType!, gender);
+        if (sizes.length === 1) {
+            if (showCheckInItemPicker) {
+                addCheckInItem(sizes[0]);
+            } else {
+                addPendingItem(sizes[0]);
+            }
         } else {
             setClothingStep('size');
         }
     };
 
-    // Check if category is clothing
-    const isClothingCategory = (categoryId: string) => {
-        const category = categories.find(c => c.id === categoryId);
-        return category?.name.toLowerCase() === 'clothing';
-    };
+    const addPendingItem = (item: ItemType) => {
+        const existing = pendingItems.find(i => i.itemTypeId === item.id);
+        if (existing) {
+            setPendingItems(pendingItems.map(i =>
+                i.itemTypeId === item.id ? { ...i, quantity: i.quantity + 1 } : i
+            ));
+        } else {
+            // Check if multiple sizes exist
+            const sameNameItems = itemTypes.filter(i =>
+                i.name === item.name && i.category_id === item.category_id && i.gender === item.gender
+            );
+            const hasMultipleSizes = sameNameItems.length > 1;
 
-    // Remove item from selection
-    const removeItem = (itemTypeId: string) => {
-        setSelectedItems(selectedItems.filter(si => si.itemTypeId !== itemTypeId));
-    };
-
-    // Update item quantity (or delete if going below 1)
-    const updateQuantity = (itemTypeId: string, delta: number) => {
-        setSelectedItems(prevItems => {
-            return prevItems
-                .map(si => {
-                    if (si.itemTypeId === itemTypeId) {
-                        const newQty = si.quantity + delta;
-                        return { ...si, quantity: newQty };
-                    }
-                    return si;
-                })
-                .filter(si => si.quantity > 0); // Remove items with 0 or less quantity
-        });
-    };
-
-    // Handle form submission
-    const handleSubmit = async () => {
-        if (!firstName.trim()) {
-            setSubmitError("Please enter a first name");
-            return;
-        }
-
-        if (!mealServed && selectedItems.length === 0) {
-            setSubmitError("Please record a meal or add at least one item");
-            return;
-        }
-
-        setSubmitting(true);
-        setSubmitError(null);
-
-        try {
-            const supabase = createClient();
-
-            // First, create or find the homeless person
-            let personId: string;
-            const trimmedFirstName = firstName.trim().toLowerCase();
-
-            if (ssnLast4) {
-                // Check if person exists with BOTH same first name AND SSN hash
-                const ssnHash = `hash_${ssnLast4}`;
-                const { data: existingPerson } = await supabase
-                    .from('homeless_person')
-                    .select('id, first_name')
-                    .eq('ssn_last4_hash', ssnHash)
-                    .ilike('first_name', trimmedFirstName)
-                    .single();
-
-                if (existingPerson) {
-                    // Found existing person with matching name and SSN
-                    personId = existingPerson.id;
-                } else {
-                    // No match found - create new person
-                    const { data: newPerson, error: personError } = await supabase
-                        .from('homeless_person')
-                        .insert({
-                            first_name: firstName.trim(),
-                            ssn_last4_hash: ssnHash,
-                        })
-                        .select('id')
-                        .single();
-
-                    if (personError) throw personError;
-                    personId = newPerson.id;
-                }
-            } else {
-                // No SSN provided - always create a new person record
-                // (Without SSN, we can't reliably identify returning visitors)
-                const { data: newPerson, error: personError } = await supabase
-                    .from('homeless_person')
-                    .insert({
-                        first_name: firstName.trim(),
-                    })
-                    .select('id')
-                    .single();
-
-                if (personError) throw personError;
-                personId = newPerson.id;
+            let displayName = item.name;
+            if (item.size && hasMultipleSizes) {
+                displayName += ` (${item.size})`;
+            }
+            if (item.gender && item.gender !== 'none') {
+                displayName += ` - ${item.gender}`;
             }
 
-            // Create the distribution record
-            const { data: distributionRecord, error: distributionError } = await supabase
-                .from('distribution')
-                .insert({
-                    homeless_person_id: personId,
-                    latitude: location?.latitude || null,
-                    longitude: location?.longitude || null,
-                    meal_served: mealServed ? 1 : 0,
-                    distributed_at: new Date().toISOString(),
-                })
-                .select('id')
-                .single();
+            setPendingItems([...pendingItems, {
+                itemTypeId: item.id,
+                name: displayName,
+                category: getCategoryName(item.category_id),
+                quantity: 1
+            }]);
+        }
+        resetClothingPicker();
+    };
 
-            if (distributionError) throw distributionError;
+    const resetClothingPicker = () => {
+        setClothingStep('type');
+        setSelectedClothingType(null);
+        setSelectedGender(null);
+    };
 
-            // Add items to the distribution
-            if (selectedItems.length > 0) {
-                const itemRecords = selectedItems.map(item => ({
-                    distribution_id: distributionRecord.id,
-                    item_type_id: item.itemTypeId,
-                    quantity: item.quantity,
-                }));
+    const updatePendingQuantity = (itemTypeId: string, delta: number) => {
+        setPendingItems(prev =>
+            prev.map(i => i.itemTypeId === itemTypeId ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i)
+                .filter(i => i.quantity > 0)
+        );
+    };
 
-                const { error: itemsError } = await supabase
-                    .from('distribution_item')
-                    .insert(itemRecords);
+    // Add item to check-in list
+    const addCheckInItem = (item: ItemType) => {
+        const existing = checkInItems.find(i => i.itemTypeId === item.id);
+        if (existing) {
+            setCheckInItems(checkInItems.map(i =>
+                i.itemTypeId === item.id ? { ...i, quantity: i.quantity + 1 } : i
+            ));
+        } else {
+            const sameNameItems = itemTypes.filter(i =>
+                i.name === item.name && i.category_id === item.category_id && i.gender === item.gender
+            );
+            const hasMultipleSizes = sameNameItems.length > 1;
 
-                if (itemsError) throw itemsError;
+            let displayName = item.name;
+            if (item.size && hasMultipleSizes) {
+                displayName += ` (${item.size})`;
+            }
+            if (item.gender && item.gender !== 'none') {
+                displayName += ` - ${item.gender}`;
             }
 
-            // Success!
-            setSubmitSuccess(true);
-
-            // Reset form after delay
-            setTimeout(() => {
-                setFirstName("");
-                setSsnLast4("");
-                setMealServed(false);
-                setSelectedItems([]);
-                setSubmitSuccess(false);
-            }, 2000);
-
-        } catch (err) {
-            console.error('Error submitting:', err);
-            setSubmitError("Failed to save. Please try again.");
-        } finally {
-            setSubmitting(false);
+            setCheckInItems([...checkInItems, {
+                itemTypeId: item.id,
+                name: displayName,
+                category: getCategoryName(item.category_id),
+                quantity: 1
+            }]);
         }
+        resetClothingPicker();
+        setShowCheckInItemPicker(false);
     };
+
+    // Filtered items for non-clothing
+    const filteredItems = useMemo(() => {
+        let items = [...itemTypes];
+        if (selectedCategory) {
+            items = items.filter(i => i.category_id === selectedCategory);
+        }
+        if (itemSearch) {
+            items = items.filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()));
+        }
+        return items;
+    }, [itemTypes, selectedCategory, itemSearch]);
+
+    // Form validation
+    const canCheckIn = firstName.trim().length >= 1 && ssnLast4.length === 4 && !checkingIn;
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
             {/* Header */}
             <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
                 <div className="max-w-2xl mx-auto px-4">
-                    <div className="flex items-center justify-between h-16">
+                    <div className="flex items-center justify-between h-14">
                         <div className="flex items-center gap-3">
-                            <Link
-                                href="/volunteer-portal"
-                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                            >
+                            <Link href="/volunteer-portal" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">
                                 <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" />
                             </Link>
-                            <div>
-                                <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-                                    Log Distribution
-                                </h1>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    Record who you're serving
-                                </p>
-                            </div>
+                            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Distribution</h1>
                         </div>
-
-                        {/* Current Time */}
-                        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center gap-2 text-sm text-slate-500">
                             <Clock className="w-4 h-4" />
                             {currentTime || "--:--"}
                         </div>
                     </div>
+
+                    {/* Tabs */}
+                    <div className="flex gap-2 pb-3">
+                        <button
+                            onClick={() => setActiveTab('checkin')}
+                            className={`flex-1 py-2.5 rounded-xl font-medium text-sm transition-all ${activeTab === 'checkin'
+                                ? 'bg-orange-500 text-white shadow-lg'
+                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                }`}
+                        >
+                            <UserPlus className="w-4 h-4 inline-block mr-2" />
+                            Check In
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('serve')}
+                            className={`flex-1 py-2.5 rounded-xl font-medium text-sm transition-all ${activeTab === 'serve'
+                                ? 'bg-orange-500 text-white shadow-lg'
+                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                }`}
+                        >
+                            <Package className="w-4 h-4 inline-block mr-2" />
+                            Serve ({checkedInPeople.length})
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Success Banner */}
-            {submitSuccess && (
-                <div className="fixed top-16 left-0 right-0 z-[60] animate-slide-up">
-                    <div className="max-w-2xl mx-auto px-4 pt-4">
-                        <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-6 shadow-2xl">
-                            <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
-                                    <CheckCircle2 className="w-10 h-10 text-white" />
+            <div className="max-w-2xl mx-auto px-4 py-6">
+                {/* CHECK-IN TAB */}
+                {activeTab === 'checkin' && (
+                    <div className="space-y-6">
+                        {/* Success Message */}
+                        {checkInSuccess && (
+                            <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-2xl p-4 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                                    <Check className="w-5 h-5 text-white" />
                                 </div>
-                                <div className="flex-1 text-white">
-                                    <h3 className="text-xl font-bold">Distribution Logged!</h3>
-                                    <p className="text-green-100">
-                                        Successfully recorded for {firstName}
-                                        {mealServed && " • Meal served"}
-                                        {selectedItems.length > 0 && ` • ${selectedItems.length} item${selectedItems.length !== 1 ? 's' : ''} given`}
-                                    </p>
+                                <div>
+                                    <p className="font-semibold text-green-800 dark:text-green-200">Checked In!</p>
+                                    <p className="text-sm text-green-600 dark:text-green-400">Ready for next person</p>
                                 </div>
                             </div>
+                        )}
+
+                        {/* Check-in Form */}
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
+                            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+                                <User className="w-5 h-5 text-orange-500" />
+                                Quick Check-In
+                            </h2>
+
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                        First Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={firstName}
+                                        onChange={(e) => setFirstName(e.target.value)}
+                                        placeholder="Name"
+                                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        autoComplete="off"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                        <Hash className="w-4 h-4 inline mr-1" />
+                                        Last 4 SSN
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={ssnLast4}
+                                        onChange={(e) => setSsnLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                        placeholder="0000"
+                                        maxLength={4}
+                                        inputMode="numeric"
+                                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-mono tracking-widest"
+                                        autoComplete="off"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Already Checked In Indicator */}
+                            {(checkingExisting || alreadyCheckedInPerson) && (
+                                <div className={`p-4 rounded-xl border mb-4 ${checkingExisting
+                                    ? 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600'
+                                    : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700'
+                                    }`}>
+                                    {checkingExisting ? (
+                                        <div className="flex items-center gap-2">
+                                            <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
+                                            <span className="text-sm text-slate-500">Checking...</span>
+                                        </div>
+                                    ) : alreadyCheckedInPerson && (
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center">
+                                                    <UserCheck className="w-5 h-5 text-white" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                                                        Already checked in today
+                                                    </p>
+                                                    <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                                                        {alreadyCheckedInPerson.mealCount > 0
+                                                            ? `${alreadyCheckedInPerson.mealCount} meal${alreadyCheckedInPerson.mealCount !== 1 ? 's' : ''} served`
+                                                            : 'No meals yet'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={goToExistingRecord}
+                                                className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-medium flex items-center gap-1"
+                                            >
+                                                <ChevronRight className="w-4 h-4" />
+                                                Go to record
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Meal Counter */}
+                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-4">
+                                <div className="flex items-center gap-3">
+                                    <Utensils className="w-5 h-5 text-orange-500" />
+                                    <span className="font-medium text-slate-900 dark:text-white">Meals</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setCheckInMeals(Math.max(0, checkInMeals - 1))}
+                                        disabled={checkInMeals === 0}
+                                        className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center disabled:opacity-50"
+                                    >
+                                        <Minus className="w-5 h-5" />
+                                    </button>
+                                    <span className="text-2xl font-bold text-slate-900 dark:text-white w-8 text-center">
+                                        {checkInMeals}
+                                    </span>
+                                    <button
+                                        onClick={() => setCheckInMeals(checkInMeals + 1)}
+                                        className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center"
+                                    >
+                                        <Plus className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Items Section */}
+                            <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Package className="w-5 h-5 text-blue-500" />
+                                        <span className="font-medium text-slate-900 dark:text-white">Items</span>
+                                        {checkInItems.length > 0 && (
+                                            <span className="text-sm text-slate-500">
+                                                ({checkInItems.reduce((sum, i) => sum + i.quantity, 0)})
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={() => setShowCheckInItemPicker(true)}
+                                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center gap-1"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                        Add
+                                    </button>
+                                </div>
+                                {checkInItems.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {checkInItems.map(item => (
+                                            <div key={item.itemTypeId} className="flex items-center justify-between bg-white dark:bg-slate-600 rounded-lg px-3 py-2">
+                                                <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => setCheckInItems(prev =>
+                                                            prev.map(i => i.itemTypeId === item.itemTypeId ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i)
+                                                                .filter(i => i.quantity > 0)
+                                                        )}
+                                                        className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-500 flex items-center justify-center"
+                                                    >
+                                                        <Minus className="w-3 h-3" />
+                                                    </button>
+                                                    <span className="text-sm font-medium w-4 text-center">{item.quantity}</span>
+                                                    <button
+                                                        onClick={() => setCheckInItems(prev =>
+                                                            prev.map(i => i.itemTypeId === item.itemTypeId ? { ...i, quantity: i.quantity + 1 } : i)
+                                                        )}
+                                                        className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center"
+                                                    >
+                                                        <Plus className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">No items yet</p>
+                                )}
+                            </div>
+
+                            <button
+                                onClick={handleCheckIn}
+                                disabled={!canCheckIn}
+                                className={`w-full py-4 rounded-xl font-semibold text-lg transition-all ${canCheckIn
+                                    ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-lg'
+                                    : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                                    }`}
+                            >
+                                {checkingIn ? (
+                                    <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                                ) : (
+                                    <>
+                                        <UserPlus className="w-5 h-5 inline-block mr-2" />
+                                        Check In
+                                        {(checkInMeals > 0 || checkInItems.length > 0) && (
+                                            <span className="ml-2 text-sm opacity-80">
+                                                ({checkInMeals > 0 ? `${checkInMeals} meal${checkInMeals !== 1 ? 's' : ''}` : ''}
+                                                {checkInMeals > 0 && checkInItems.length > 0 ? ', ' : ''}
+                                                {checkInItems.length > 0 ? `${checkInItems.reduce((s, i) => s + i.quantity, 0)} item${checkInItems.reduce((s, i) => s + i.quantity, 0) !== 1 ? 's' : ''}` : ''})
+                                            </span>
+                                        )}
+                                    </>
+                                )}
+                            </button>
                         </div>
+                    </div>
+                )}
+
+                {/* SERVE TAB */}
+                {activeTab === 'serve' && (
+                    <div className="space-y-4">
+                        {/* Location Indicator */}
+                        <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                            <MapPin className="w-4 h-4" />
+                            {currentLocation
+                                ? <span>Showing people within 50m</span>
+                                : <span className="text-yellow-600">Location not available</span>
+                            }
+                        </div>
+
+                        {loadingPeople ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                            </div>
+                        ) : checkedInPeople.length === 0 ? (
+                            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
+                                <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                                <p className="text-slate-600 dark:text-slate-400">
+                                    {currentLocation
+                                        ? "No one checked in nearby"
+                                        : "Enable location to see nearby check-ins"
+                                    }
+                                </p>
+                                <button
+                                    onClick={() => setActiveTab('checkin')}
+                                    className="mt-4 px-6 py-2 bg-orange-500 text-white rounded-xl font-medium"
+                                >
+                                    Check someone in
+                                </button>
+                            </div>
+                        ) : (
+                            checkedInPeople.map((person) => (
+                                <div
+                                    key={person.id}
+                                    className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+                                >
+                                    {/* Person Header */}
+                                    <button
+                                        onClick={() => setSelectedPerson(selectedPerson?.id === person.id ? null : person)}
+                                        className="w-full p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                                                <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                                    {person.firstName.charAt(0).toUpperCase()}
+                                                </span>
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-semibold text-slate-900 dark:text-white">{person.firstName}</p>
+                                                    <span className="text-xs px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full font-mono">
+                                                        ••••{person.ssnLast4}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-3 text-sm text-slate-500">
+                                                    {person.mealCount > 0 && (
+                                                        <span className="flex items-center gap-1">
+                                                            <Utensils className="w-3 h-3" />
+                                                            {person.mealCount} meal{person.mealCount !== 1 ? 's' : ''}
+                                                        </span>
+                                                    )}
+                                                    {person.items.length > 0 && (
+                                                        <span className="flex items-center gap-1">
+                                                            <Package className="w-3 h-3" />
+                                                            {person.items.reduce((sum, i) => sum + i.quantity, 0)} item{person.items.reduce((sum, i) => sum + i.quantity, 0) !== 1 ? 's' : ''}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {selectedPerson?.id === person.id ? (
+                                            <ChevronDown className="w-5 h-5 text-slate-400" />
+                                        ) : (
+                                            <ChevronRight className="w-5 h-5 text-slate-400" />
+                                        )}
+                                    </button>
+
+                                    {/* Expanded Content */}
+                                    {selectedPerson?.id === person.id && (
+                                        <div className="px-4 pb-4 border-t border-slate-100 dark:border-slate-700 pt-4 space-y-4">
+                                            {/* Meal Counter */}
+                                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <Utensils className="w-5 h-5 text-orange-500" />
+                                                    <span className="font-medium text-slate-900 dark:text-white">Meals</span>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => updateMealCount(person, -1)}
+                                                        disabled={person.mealCount === 0 || updatingMeals}
+                                                        className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center disabled:opacity-50"
+                                                    >
+                                                        <Minus className="w-5 h-5" />
+                                                    </button>
+                                                    <span className="text-2xl font-bold text-slate-900 dark:text-white w-8 text-center">
+                                                        {person.mealCount}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => updateMealCount(person, 1)}
+                                                        disabled={updatingMeals}
+                                                        className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center disabled:opacity-50"
+                                                    >
+                                                        <Plus className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Items Given */}
+                                            {person.items.length > 0 && (
+                                                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
+                                                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                                                        <Package className="w-4 h-4" />
+                                                        Items Given
+                                                    </p>
+                                                    <div className="space-y-2">
+                                                        {person.items.map((item) => (
+                                                            <div key={item.id} className="flex items-center justify-between bg-white dark:bg-slate-600 rounded-lg px-3 py-2">
+                                                                <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        onClick={() => updateDistributionItem(item.id, item.quantity - 1)}
+                                                                        className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-500 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900"
+                                                                    >
+                                                                        <Minus className="w-4 h-4" />
+                                                                    </button>
+                                                                    <span className="text-sm font-medium w-6 text-center text-slate-900 dark:text-white">{item.quantity}</span>
+                                                                    <button
+                                                                        onClick={() => updateDistributionItem(item.id, item.quantity + 1)}
+                                                                        className="w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600"
+                                                                    >
+                                                                        <Plus className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Add Items Button */}
+                                            <button
+                                                onClick={() => setShowItemPicker(true)}
+                                                className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Plus className="w-5 h-5" />
+                                                Add Items
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+
+                        {/* Refresh Button */}
+                        {checkedInPeople.length > 0 && (
+                            <button
+                                onClick={fetchCheckedInPeople}
+                                className="w-full py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-medium"
+                            >
+                                Refresh List
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Item Picker Modal */}
+            {showItemPicker && selectedPerson && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                        {/* Modal Header */}
+                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                            <div>
+                                <h3 className="font-semibold text-slate-900 dark:text-white">Add Items</h3>
+                                <p className="text-sm text-slate-500">For {selectedPerson.firstName}</p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowItemPicker(false);
+                                    setPendingItems([]);
+                                    setSelectedCategory(null);
+                                    resetClothingPicker();
+                                }}
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Pending Items */}
+                        {pendingItems.length > 0 && (
+                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800">
+                                <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">Items to add:</p>
+                                <div className="space-y-2">
+                                    {pendingItems.map(item => (
+                                        <div key={item.itemTypeId} className="flex items-center justify-between bg-white dark:bg-slate-700 rounded-lg px-3 py-2">
+                                            <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => updatePendingQuantity(item.itemTypeId, -1)} className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center">
+                                                    <Minus className="w-3 h-3" />
+                                                </button>
+                                                <span className="text-sm font-medium w-4 text-center">{item.quantity}</span>
+                                                <button onClick={() => updatePendingQuantity(item.itemTypeId, 1)} className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                                                    <Plus className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Content Area */}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {!selectedCategory ? (
+                                /* Step 1: Select Category */
+                                <div>
+                                    <p className="text-sm text-slate-500 mb-3">Select a category:</p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {categories.map(cat => {
+                                            const { icon: Icon, color, bg } = getCategoryIcon(cat.name);
+                                            return (
+                                                <button
+                                                    key={cat.id}
+                                                    onClick={() => { setSelectedCategory(cat.id); resetClothingPicker(); }}
+                                                    className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 flex flex-col items-center gap-2 transition-colors"
+                                                >
+                                                    <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
+                                                        <Icon className={`w-6 h-6 ${color}`} />
+                                                    </div>
+                                                    <span className="font-medium text-slate-900 dark:text-white text-sm text-center">{cat.name}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : isClothingCategory(selectedCategory) ? (
+                                /* Clothing Multi-Step */
+                                <div>
+                                    <button
+                                        onClick={() => { setSelectedCategory(null); resetClothingPicker(); }}
+                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" /> Back to categories
+                                    </button>
+
+                                    {clothingStep === 'type' && (
+                                        <div className="space-y-2">
+                                            <p className="text-sm text-slate-500 mb-2">Select type:</p>
+                                            {getClothingTypes().map(type => (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => selectClothingType(type)}
+                                                    className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                >
+                                                    <span className="font-medium text-slate-900 dark:text-white">{type}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {clothingStep === 'gender' && (
+                                        <div>
+                                            <button onClick={resetClothingPicker} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                <ChevronLeft className="w-4 h-4" /> Back
+                                            </button>
+                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType}</p>
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {getClothingGenders().map(gender => (
+                                                    <button
+                                                        key={gender}
+                                                        onClick={() => selectClothingGender(gender)}
+                                                        className="p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                    >
+                                                        <span className="text-2xl block mb-1">
+                                                            {gender === 'male' && '👨'}
+                                                            {gender === 'female' && '👩'}
+                                                            {gender === 'none' && '👤'}
+                                                        </span>
+                                                        <span className="text-sm capitalize">{gender === 'none' ? 'Unisex' : gender}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {clothingStep === 'size' && (
+                                        <div>
+                                            <button onClick={() => setClothingStep('gender')} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                <ChevronLeft className="w-4 h-4" /> Back
+                                            </button>
+                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType} - {selectedGender === 'none' ? 'Unisex' : selectedGender}</p>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {getClothingSizes().map(item => (
+                                                    <button
+                                                        key={item.id}
+                                                        onClick={() => addPendingItem(item)}
+                                                        className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                    >
+                                                        <span className="font-medium text-slate-900 dark:text-white">{item.size}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                /* Non-clothing items */
+                                <div>
+                                    <button
+                                        onClick={() => setSelectedCategory(null)}
+                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" /> Back to categories
+                                    </button>
+                                    <p className="text-sm text-slate-500 mb-2">Select item:</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {filteredItems.map(item => (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => addPendingItem(item)}
+                                                className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                            >
+                                                <span className="text-sm font-medium text-slate-900 dark:text-white">{item.name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Save Button */}
+                        {pendingItems.length > 0 && (
+                            <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                                <button
+                                    onClick={addItemsToPerson}
+                                    className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold"
+                                >
+                                    Add {pendingItems.reduce((sum, i) => sum + i.quantity, 0)} Item{pendingItems.reduce((sum, i) => sum + i.quantity, 0) !== 1 ? 's' : ''}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
 
-            <div className="max-w-2xl mx-auto px-4 py-6">
-                {/* Location Status */}
-                <div className={`mb-6 p-4 rounded-xl border ${loadingLocation
-                    ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                    : location
-                        ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                    }`}>
-                    <div className="flex items-center gap-3">
-                        <MapPin className={`w-5 h-5 ${loadingLocation
-                            ? 'text-blue-500'
-                            : location
-                                ? 'text-green-500'
-                                : 'text-red-500'
-                            }`} />
-                        <div className="flex-1">
-                            {loadingLocation ? (
-                                <p className="text-sm text-blue-700 dark:text-blue-300">Getting your location...</p>
-                            ) : location ? (
-                                <>
-                                    <p className="text-sm font-medium text-green-700 dark:text-green-300">
-                                        Location captured
-                                    </p>
-                                    <p className="text-xs text-green-600 dark:text-green-400">
-                                        Accuracy: ±{Math.round(location.accuracy)}m
-                                    </p>
-                                </>
-                            ) : (
-                                <p className="text-sm text-red-700 dark:text-red-300">{locationError}</p>
-                            )}
-                        </div>
-                        {loadingLocation && (
-                            <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-                        )}
-                    </div>
-                </div>
-
-                {/* Person Info */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 mb-6">
-                    <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                        <User className="w-4 h-4 text-orange-500" />
-                        Person Information
-                    </h2>
-
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                                    First Name *
-                                </label>
-                                <input
-                                    type="text"
-                                    value={firstName}
-                                    onChange={(e) => setFirstName(e.target.value)}
-                                    placeholder="Enter first name"
-                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                                    <span className="flex items-center gap-2">
-                                        <Hash className="w-4 h-4" />
-                                        Last 4 SSN
-                                    </span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={ssnLast4}
-                                    onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                                        setSsnLast4(val);
-                                    }}
-                                    placeholder="0000"
-                                    maxLength={4}
-                                    inputMode="numeric"
-                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 tracking-widest text-center text-lg font-mono"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Person Lookup Status */}
-                        {(searchingPerson || searchPending || foundPerson || (firstName.trim() && ssnLast4.length === 4)) && (
-                            <div className={`p-4 rounded-xl border transition-all ${(searchingPerson || searchPending)
-                                ? 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600'
-                                : foundPerson
-                                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                                }`}>
-                                <div className="flex items-center gap-3">
-                                    {(searchingPerson || searchPending) ? (
-                                        <>
-                                            <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
-                                            <p className="text-sm text-slate-600 dark:text-slate-400">
-                                                Searching...
-                                            </p>
-                                        </>
-                                    ) : foundPerson ? (
-                                        <>
-                                            <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
-                                                <UserCheck className="w-5 h-5 text-white" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <p className="text-sm font-semibold text-green-700 dark:text-green-300">
-                                                    Returning Visitor Found!
-                                                </p>
-                                                <p className="text-xs text-green-600 dark:text-green-400">
-                                                    {foundPerson.visitCount > 0
-                                                        ? `${foundPerson.visitCount} previous visit${foundPerson.visitCount !== 1 ? 's' : ''}`
-                                                        : 'First recorded visit'}
-                                                    {foundPerson.lastVisit && (
-                                                        <span> • Last seen {new Date(foundPerson.lastVisit).toLocaleDateString()}</span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
-                                                <UserPlus className="w-5 h-5 text-white" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                                                    New Person
-                                                </p>
-                                                <p className="text-xs text-blue-600 dark:text-blue-400">
-                                                    Will be added to the system
-                                                </p>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Meal Served */}
-                <div className={`bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 mb-6 transition-opacity ${!isFormReady ? 'opacity-50' : ''}`}>
-                    {!isFormReady && (
-                        <div className="flex items-center gap-2 mb-3 text-sm text-slate-500 dark:text-slate-400">
-                            <Lock className="w-4 h-4" />
-                            Enter name and SSN first
-                        </div>
-                    )}
-                    <button
-                        onClick={() => isFormReady && setMealServed(!mealServed)}
-                        disabled={!isFormReady}
-                        className={`w-full flex items-center justify-between p-4 rounded-xl transition-all ${mealServed
-                            ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-500'
-                            : 'bg-slate-100 dark:bg-slate-700 border-2 border-transparent hover:border-slate-300 dark:hover:border-slate-600'
-                            } ${!isFormReady ? 'cursor-not-allowed' : ''}`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${mealServed
-                                ? 'bg-green-500'
-                                : 'bg-slate-200 dark:bg-slate-600'
-                                }`}>
-                                <Utensils className={`w-5 h-5 ${mealServed ? 'text-white' : 'text-slate-500'}`} />
-                            </div>
-                            <span className={`font-semibold ${mealServed ? 'text-green-700 dark:text-green-300' : 'text-slate-700 dark:text-slate-300'
-                                }`}>
-                                Meal Served
-                            </span>
-                        </div>
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${mealServed
-                            ? 'bg-green-500 border-green-500'
-                            : 'border-slate-300 dark:border-slate-600'
-                            }`}>
-                            {mealServed && <Check className="w-4 h-4 text-white" />}
-                        </div>
-                    </button>
-                </div>
-
-                {/* Items Given */}
-                <div className={`bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 mb-6 transition-opacity ${!isFormReady ? 'opacity-50' : ''}`}>
-                    <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                        <Package className="w-4 h-4 text-orange-500" />
-                        Items Given
-                    </h2>
-
-                    {!isFormReady && (
-                        <div className="flex items-center gap-2 mb-3 text-sm text-slate-500 dark:text-slate-400">
-                            <Lock className="w-4 h-4" />
-                            Enter name and SSN first
-                        </div>
-                    )}
-
-                    {/* Selected Items */}
-                    {selectedItems.length > 0 && (
-                        <div className="space-y-2 mb-4">
-                            {selectedItems.map(item => (
-                                <div
-                                    key={item.itemTypeId}
-                                    className="flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-700 rounded-xl"
-                                >
-                                    <div className="flex-1">
-                                        <p className="font-medium text-slate-900 dark:text-white text-sm">
-                                            {item.name}
-                                        </p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                                            {item.category}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => updateQuantity(item.itemTypeId, -1)}
-                                            className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-500"
-                                        >
-                                            -
-                                        </button>
-                                        <span className="w-8 text-center font-semibold text-slate-900 dark:text-white">
-                                            {item.quantity}
-                                        </span>
-                                        <button
-                                            onClick={() => updateQuantity(item.itemTypeId, 1)}
-                                            className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-500"
-                                        >
-                                            +
-                                        </button>
-                                        <button
-                                            onClick={() => removeItem(item.itemTypeId)}
-                                            className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500 hover:bg-red-200 dark:hover:bg-red-900/50 ml-2"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Add Item Button */}
-                    <button
-                        onClick={() => isFormReady && setShowItemPicker(true)}
-                        disabled={!isFormReady}
-                        className={`w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 transition-colors flex items-center justify-center gap-2 ${isFormReady ? 'hover:border-orange-500 hover:text-orange-500' : 'cursor-not-allowed'}`}
-                    >
-                        <Plus className="w-5 h-5" />
-                        Add Item
-                    </button>
-                </div>
-
-                {/* Submit Error */}
-                {submitError && (
-                    <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3">
-                        <AlertCircle className="w-5 h-5 text-red-500" />
-                        <p className="text-sm text-red-700 dark:text-red-300">{submitError}</p>
-                    </div>
-                )}
-
-                {/* Submit Button */}
-                <button
-                    onClick={handleSubmit}
-                    disabled={submitting || submitSuccess}
-                    className={`w-full py-4 rounded-xl font-semibold text-lg transition-all flex items-center justify-center gap-2 ${submitSuccess
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]'
-                        } disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none`}
-                >
-                    {submitting ? (
-                        <>
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            Saving...
-                        </>
-                    ) : submitSuccess ? (
-                        <>
-                            <Check className="w-5 h-5" />
-                            Saved Successfully!
-                        </>
-                    ) : (
-                        'Save Distribution'
-                    )}
-                </button>
-
-                {/* Quick tip */}
-                <p className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
-                    Tip: You can add multiple items before saving
-                </p>
-            </div>
-
-            {/* Item Picker Modal */}
-            {showItemPicker && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-                    <div className="bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[85vh] overflow-hidden">
+            {/* Check-In Item Picker Modal */}
+            {showCheckInItemPicker && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl max-h-[80vh] overflow-hidden flex flex-col">
                         {/* Modal Header */}
                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                {(selectedCategory || clothingStep) && (
-                                    <button
-                                        onClick={() => {
-                                            if (clothingStep === 'size') {
-                                                setClothingStep('gender');
-                                                setSelectedGender(null);
-                                            } else if (clothingStep === 'gender') {
-                                                setClothingStep('type');
-                                                setSelectedClothingType(null);
-                                            } else if (clothingStep === 'type') {
-                                                setClothingStep(null);
-                                                setSelectedCategory(null);
-                                            } else {
-                                                setSelectedCategory(null);
-                                            }
-                                        }}
-                                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                                    >
-                                        <ArrowLeft className="w-5 h-5 text-slate-500" />
-                                    </button>
-                                )}
-                                <h3 className="font-semibold text-slate-900 dark:text-white">
-                                    {!selectedCategory && 'Add Item'}
-                                    {selectedCategory && !clothingStep && getCategoryName(selectedCategory)}
-                                    {clothingStep === 'type' && 'Select Item Type'}
-                                    {clothingStep === 'gender' && `${selectedClothingType} - Select Gender`}
-                                    {clothingStep === 'size' && `${selectedClothingType} (${selectedGender}) - Select Size`}
-                                </h3>
+                            <div>
+                                <h3 className="font-semibold text-slate-900 dark:text-white">Add Item</h3>
+                                <p className="text-sm text-slate-500">Select an item to add</p>
                             </div>
                             <button
-                                onClick={resetItemPicker}
+                                onClick={() => {
+                                    setShowCheckInItemPicker(false);
+                                    setSelectedCategory(null);
+                                    resetClothingPicker();
+                                }}
                                 className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                             >
-                                <X className="w-5 h-5 text-slate-500" />
+                                <X className="w-5 h-5" />
                             </button>
                         </div>
 
-                        {/* Search - Only show when no category selected or browsing non-clothing */}
-                        {(!selectedCategory || (selectedCategory && !isClothingCategory(selectedCategory) && !clothingStep)) && (
-                            <div className="p-4 border-b border-slate-200 dark:border-slate-700">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        value={itemSearchQuery}
-                                        onChange={(e) => setItemSearchQuery(e.target.value)}
-                                        placeholder="Search items..."
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                        autoFocus
-                                    />
+                        {/* Content Area */}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {!selectedCategory ? (
+                                /* Step 1: Select Category */
+                                <div>
+                                    <p className="text-sm text-slate-500 mb-3">Select a category:</p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {categories.map(cat => {
+                                            const { icon: Icon, color, bg } = getCategoryIcon(cat.name);
+                                            return (
+                                                <button
+                                                    key={cat.id}
+                                                    onClick={() => { setSelectedCategory(cat.id); resetClothingPicker(); }}
+                                                    className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 flex flex-col items-center gap-2 transition-colors"
+                                                >
+                                                    <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
+                                                        <Icon className={`w-6 h-6 ${color}`} />
+                                                    </div>
+                                                    <span className="font-medium text-slate-900 dark:text-white text-sm text-center">{cat.name}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            ) : isClothingCategory(selectedCategory) ? (
+                                /* Clothing Multi-Step */
+                                <div>
+                                    <button
+                                        onClick={() => { setSelectedCategory(null); resetClothingPicker(); }}
+                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" /> Back to categories
+                                    </button>
 
-                        {/* Content */}
-                        <div className="overflow-y-auto max-h-[60vh] p-4">
-                            {loadingData ? (
-                                <div className="flex items-center justify-center py-12">
-                                    <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
-                                </div>
-                            ) : !selectedCategory ? (
-                                /* Step 1: Category Selection */
-                                <>
-                                    {/* Show search results if searching */}
-                                    {itemSearchQuery && (
-                                        <div className="mb-4">
-                                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Search Results</p>
-                                            {filteredItems.length === 0 ? (
-                                                <p className="text-center text-slate-400 py-4">No items found</p>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    {filteredItems.slice(0, 10).map(item => (
-                                                        <button
-                                                            key={item.id}
-                                                            onClick={() => addItem(item)}
-                                                            className="w-full p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-transparent hover:border-orange-300 transition-all"
-                                                        >
-                                                            <p className="font-medium text-slate-900 dark:text-white text-sm">
-                                                                {item.name}
-                                                                {item.size && <span className="text-slate-500"> ({item.size})</span>}
-                                                                {item.gender && item.gender !== 'none' && (
-                                                                    <span className="text-slate-500"> - {item.gender}</span>
-                                                                )}
-                                                            </p>
-                                                            <p className="text-xs text-slate-500">{getCategoryName(item.category_id)}</p>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
+                                    {clothingStep === 'type' && (
+                                        <div className="space-y-2">
+                                            <p className="text-sm text-slate-500 mb-2">Select type:</p>
+                                            {getClothingTypes().map(type => (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => selectClothingType(type)}
+                                                    className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                >
+                                                    <span className="font-medium text-slate-900 dark:text-white">{type}</span>
+                                                </button>
+                                            ))}
                                         </div>
                                     )}
-
-                                    {!itemSearchQuery && (
-                                        <>
-                                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Choose a category</p>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {categories.map(cat => {
-                                                    const iconMap: { [key: string]: React.ReactNode } = {
-                                                        'clothing': <Shirt className="w-8 h-8" />,
-                                                        'hygiene': <Droplets className="w-8 h-8" />,
-                                                        'basic needs': <ShoppingBag className="w-8 h-8" />,
-                                                        'canned goods': <Apple className="w-8 h-8" />,
-                                                    };
-                                                    const colorMap: { [key: string]: string } = {
-                                                        'clothing': 'from-blue-500 to-indigo-500',
-                                                        'hygiene': 'from-cyan-500 to-teal-500',
-                                                        'basic needs': 'from-orange-500 to-amber-500',
-                                                        'canned goods': 'from-green-500 to-emerald-500',
-                                                    };
-                                                    const name = cat.name.toLowerCase();
-                                                    return (
-                                                        <button
-                                                            key={cat.id}
-                                                            onClick={() => {
-                                                                setSelectedCategory(cat.id);
-                                                                if (isClothingCategory(cat.id)) {
-                                                                    setClothingStep('type');
-                                                                }
-                                                            }}
-                                                            className="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-slate-700 rounded-2xl hover:shadow-lg transition-all hover:scale-[1.02]"
-                                                        >
-                                                            <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${colorMap[name] || 'from-slate-500 to-slate-600'} flex items-center justify-center text-white`}>
-                                                                {iconMap[name] || <Package className="w-8 h-8" />}
-                                                            </div>
-                                                            <span className="font-semibold text-slate-900 dark:text-white text-sm">
-                                                                {cat.name}
-                                                            </span>
-                                                        </button>
-                                                    );
-                                                })}
+                                    {clothingStep === 'gender' && (
+                                        <div>
+                                            <button onClick={resetClothingPicker} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                <ChevronLeft className="w-4 h-4" /> Back
+                                            </button>
+                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType}</p>
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {getClothingGenders().map(gender => (
+                                                    <button
+                                                        key={gender}
+                                                        onClick={() => selectClothingGender(gender)}
+                                                        className="p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                    >
+                                                        <span className="text-2xl block mb-1">
+                                                            {gender === 'male' && '👨'}
+                                                            {gender === 'female' && '👩'}
+                                                            {gender === 'none' && '👤'}
+                                                        </span>
+                                                        <span className="text-sm capitalize">{gender === 'none' ? 'Unisex' : gender}</span>
+                                                    </button>
+                                                ))}
                                             </div>
-                                        </>
+                                        </div>
                                     )}
-                                </>
-                            ) : clothingStep === 'type' ? (
-                                /* Clothing Step 1: Select Type */
-                                <div className="space-y-2">
-                                    {getClothingTypes().map(type => (
-                                        <button
-                                            key={type}
-                                            onClick={() => selectClothingType(type)}
-                                            className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-transparent hover:border-orange-300 transition-all flex items-center justify-between"
-                                        >
-                                            <span className="font-medium text-slate-900 dark:text-white">{type}</span>
-                                            <ChevronRight className="w-5 h-5 text-slate-400" />
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : clothingStep === 'gender' ? (
-                                /* Clothing Step 2: Select Gender */
-                                <div className="grid grid-cols-3 gap-3">
-                                    {getClothingGenders().map(gender => (
-                                        <button
-                                            key={gender}
-                                            onClick={() => selectClothingGender(gender)}
-                                            className="flex flex-col items-center gap-2 p-6 bg-slate-100 dark:bg-slate-700 rounded-2xl hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-transparent hover:border-orange-300 transition-all"
-                                        >
-                                            <span className="text-3xl">
-                                                {gender === 'male' && '👨'}
-                                                {gender === 'female' && '👩'}
-                                                {gender === 'none' && '👤'}
-                                            </span>
-                                            <span className="font-medium text-slate-900 dark:text-white capitalize">
-                                                {gender === 'none' ? 'Unisex' : gender}
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : clothingStep === 'size' ? (
-                                /* Clothing Step 3: Select Size */
-                                <div className="grid grid-cols-2 gap-3">
-                                    {getClothingSizes().map(item => (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => addItem(item)}
-                                            className="p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-transparent hover:border-orange-300 transition-all"
-                                        >
-                                            <span className="text-2xl font-bold text-slate-900 dark:text-white block">
-                                                {item.size || 'One Size'}
-                                            </span>
-                                        </button>
-                                    ))}
+                                    {clothingStep === 'size' && (
+                                        <div>
+                                            <button onClick={() => setClothingStep('gender')} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                <ChevronLeft className="w-4 h-4" /> Back
+                                            </button>
+                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType} - {selectedGender === 'none' ? 'Unisex' : selectedGender}</p>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {getClothingSizes().map(item => (
+                                                    <button
+                                                        key={item.id}
+                                                        onClick={() => addCheckInItem(item)}
+                                                        className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                    >
+                                                        <span className="font-medium text-slate-900 dark:text-white">{item.size}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
-                                /* Non-Clothing Category: Show Items Directly */
-                                <div className="space-y-2">
-                                    {filteredItems.length === 0 ? (
-                                        <p className="text-center text-slate-500 dark:text-slate-400 py-12">
-                                            No items found
-                                        </p>
-                                    ) : (
-                                        filteredItems.map(item => (
+                                /* Non-clothing items */
+                                <div>
+                                    <button
+                                        onClick={() => setSelectedCategory(null)}
+                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" /> Back to categories
+                                    </button>
+                                    <p className="text-sm text-slate-500 mb-2">Select item:</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {filteredItems.map(item => (
                                             <button
                                                 key={item.id}
-                                                onClick={() => addItem(item)}
-                                                className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-transparent hover:border-orange-300 transition-all"
+                                                onClick={() => addCheckInItem(item)}
+                                                className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
                                             >
-                                                <p className="font-medium text-slate-900 dark:text-white">
-                                                    {item.name}
-                                                </p>
+                                                <span className="text-sm font-medium text-slate-900 dark:text-white">{item.name}</span>
                                             </button>
-                                        ))
-                                    )}
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
