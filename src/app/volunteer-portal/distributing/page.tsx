@@ -45,8 +45,12 @@ type ActiveTab = 'checkin' | 'serve';
 // Mock location toggle: Set to true for testing (uses first stop's coordinates)
 const USE_MOCK_LOCATION = false;
 
-// Stop detection radius in meters (used for detecting current stop AND filtering check-ins)
+// Stop detection radius in meters (used for detecting current stop)
 const STOP_DETECTION_RADIUS = 100;
+
+// Check-in display filters
+const CHECKIN_DISPLAY_RADIUS = 50; // Only show check-ins within 50 meters
+const CHECKIN_DISPLAY_MINUTES = 60; // Only show check-ins from last 60 minutes
 
 interface RouteStop {
     id: string;
@@ -240,12 +244,13 @@ export default function DistributingPage() {
         fetchData();
     }, []);
 
-    // Fetch today's checked-in people (grouped by person, within 50m of current location)
+    // Fetch checked-in people (within 50m of current location and last hour)
     const fetchCheckedInPeople = async () => {
         setLoadingPeople(true);
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // Only show check-ins from the last hour
+        const oneHourAgo = new Date();
+        oneHourAgo.setMinutes(oneHourAgo.getMinutes() - CHECKIN_DISPLAY_MINUTES);
 
         const { data: distributions } = await supabase
             .from('distribution')
@@ -257,23 +262,23 @@ export default function DistributingPage() {
                 longitude,
                 homeless_person:homeless_person_id (id, first_name, ssn_last4_hash)
             `)
-            .gte('created_at', today.toISOString())
+            .gte('created_at', oneHourAgo.toISOString())
             .order('created_at', { ascending: false });
 
         if (distributions) {
-            // Filter to only distributions within 100 meters of current stop
-            const filteredDistributions = currentStop
+            // Filter to only distributions within 50 meters of volunteer's current location
+            const filteredDistributions = currentLocation
                 ? distributions.filter(dist => {
                     if (!dist.latitude || !dist.longitude) return false;
                     const distance = getDistanceInMeters(
-                        currentStop.latitude,
-                        currentStop.longitude,
-                        dist.latitude,
-                        dist.longitude
+                        currentLocation.lat,
+                        currentLocation.lng,
+                        parseFloat(dist.latitude),
+                        parseFloat(dist.longitude)
                     );
-                    return distance <= STOP_DETECTION_RADIUS; // 100 meters
+                    return distance <= CHECKIN_DISPLAY_RADIUS; // 50 meters
                 })
-                : distributions; // Show all if no stop detected
+                : []; // Don't show any if no location detected
 
             // Group by person ID
             const personMap = new Map<string, CheckedInPerson>();
@@ -333,10 +338,12 @@ export default function DistributingPage() {
         setLoadingPeople(false);
     };
 
-    // Fetch people when current stop changes
+    // Fetch people when current location changes
     useEffect(() => {
-        fetchCheckedInPeople();
-    }, [currentStop]);
+        if (currentLocation) {
+            fetchCheckedInPeople();
+        }
+    }, [currentLocation]);
 
     // Check if person is already checked in today when typing name/SSN
     useEffect(() => {
