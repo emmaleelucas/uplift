@@ -260,24 +260,16 @@ export const warehouseInventoryRelations = relations(
 
 /* Van */
 export const vanRelations = relations(van, ({ many }) => ({
-    routes: many(route),
+    routeRuns: many(routeRun),
 }));
 
 /* Driver */
 export const driverRelations = relations(driver, ({ many }) => ({
-    routes: many(route),
+    routeRuns: many(routeRun),
 }));
 
 /* Route */
-export const routeRelations = relations(route, ({ one, many }) => ({
-    van: one(van, {
-        fields: [route.vanId],
-        references: [van.id],
-    }),
-    driver: one(driver, {
-        fields: [route.driverId],
-        references: [driver.id],
-    }),
+export const routeRelations = relations(route, ({ many }) => ({
     stops: many(routeStop),
     runs: many(routeRun),
 }));
@@ -296,6 +288,14 @@ export const routeRunRelations = relations(routeRun, ({ one, many }) => ({
     route: one(route, {
         fields: [routeRun.routeId],
         references: [route.id],
+    }),
+    van: one(van, {
+        fields: [routeRun.vanId],
+        references: [van.id],
+    }),
+    driver: one(driver, {
+        fields: [routeRun.driverId],
+        references: [driver.id],
     }),
     distributions: many(distribution),
 }));
