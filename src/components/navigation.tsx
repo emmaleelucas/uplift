@@ -3,12 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { Menu, X, Heart, ClipboardList, ChevronDown } from "lucide-react";
-
-// Primary nav links (always visible)
-const primaryLinks = [
-  { href: "/volunteer-portal", label: "Volunteer Portal", icon: ClipboardList },
-];
+import { Menu, X, Heart, ChevronDown } from "lucide-react";
 
 // Secondary nav links (in hamburger menu)
 const menuLinks = [
@@ -88,21 +83,6 @@ export function Navigation() {
               )}
             </div>
 
-            {/* Primary Links */}
-            {primaryLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${pathname === link.href
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-foreground/80 hover:text-foreground hover:bg-muted"
-                  }`}
-              >
-                <link.icon className="w-4 h-4" />
-                {link.label}
-              </Link>
-            ))}
-
             {/* Give Button */}
             <Link
               href="/give"
@@ -138,25 +118,6 @@ export function Navigation() {
         {isOpen && (
           <div className="md:hidden py-4 border-t border-border/50 animate-slide-up">
             <div className="flex flex-col gap-2">
-              {/* Volunteer Portal First */}
-              {primaryLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-300 ${pathname === link.href
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground/80 hover:text-foreground hover:bg-muted"
-                    }`}
-                >
-                  <link.icon className="w-5 h-5" />
-                  {link.label}
-                </Link>
-              ))}
-
-              <div className="border-t border-border/50 my-2" />
-
-              {/* Other Links */}
               {menuLinks.map((link) => (
                 <Link
                   key={link.href}
