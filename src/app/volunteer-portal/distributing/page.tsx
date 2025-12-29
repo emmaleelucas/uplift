@@ -106,6 +106,10 @@ export default function DistributingPage() {
     // SSN reveal state (for privacy - tap to reveal, auto-hide after 3 seconds)
     const [revealedSsnId, setRevealedSsnId] = useState<string | null>(null);
 
+    // Delete confirmation modal state
+    const [personToDelete, setPersonToDelete] = useState<CheckedInPerson | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
     // Current time
     const [currentTime, setCurrentTime] = useState("");
 
@@ -525,12 +529,13 @@ export default function DistributingPage() {
     };
 
     // Delete person from today's check-in list
-    const deleteCheckIn = async (person: CheckedInPerson) => {
-        const confirmed = window.confirm(`Remove ${person.firstName} from today's check-ins? This will delete their distribution record.`);
-        if (!confirmed) return;
+    const confirmDeleteCheckIn = async () => {
+        if (!personToDelete) return;
+
+        setDeleting(true);
 
         // Delete all distribution records for this person today
-        for (const distId of person.distributionIds) {
+        for (const distId of personToDelete.distributionIds) {
             // First delete any distribution items
             await supabase
                 .from('distribution_item')
@@ -545,10 +550,13 @@ export default function DistributingPage() {
         }
 
         // Update local state
-        setCheckedInPeople(prev => prev.filter(p => p.id !== person.id));
-        if (selectedPerson?.id === person.id) {
+        setCheckedInPeople(prev => prev.filter(p => p.id !== personToDelete.id));
+        if (selectedPerson?.id === personToDelete.id) {
             setSelectedPerson(null);
         }
+
+        setDeleting(false);
+        setPersonToDelete(null);
     };
 
     // Add items to person (attached to first distribution record)
@@ -860,7 +868,7 @@ export default function DistributingPage() {
                 {!showNewCheckIn ? (
                     <button
                         onClick={() => setShowNewCheckIn(true)}
-                        className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-semibold text-lg transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-4 bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl font-semibold text-lg transition-colors flex items-center justify-center gap-2"
                     >
                         <UserPlus className="w-5 h-5" />
                         Check In New Person
@@ -1230,7 +1238,7 @@ export default function DistributingPage() {
 
                                     {/* Delete Button */}
                                     <button
-                                        onClick={() => deleteCheckIn(person)}
+                                        onClick={() => setPersonToDelete(person)}
                                         className="w-full py-3 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
                                     >
                                         <Trash2 className="w-5 h-5" />
@@ -1579,6 +1587,48 @@ export default function DistributingPage() {
                     </div>
                 )
             }
+
+            {/* Delete Confirmation Modal */}
+            {personToDelete && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl overflow-hidden">
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                                <Trash2 className="w-8 h-8 text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+                                Remove Check-In?
+                            </h3>
+                            <p className="text-slate-600 dark:text-slate-400 mb-6">
+                                Are you sure you want to remove <span className="font-semibold">{personToDelete.firstName}</span> from today&apos;s check-ins? This will delete their distribution record.
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setPersonToDelete(null)}
+                                    disabled={deleting}
+                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium transition-colors disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmDeleteCheckIn}
+                                    disabled={deleting}
+                                    className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {deleting ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Trash2 className="w-5 h-5" />
+                                            Remove
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

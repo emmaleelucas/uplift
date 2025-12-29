@@ -438,42 +438,51 @@ async function seed() {
     console.log('🗓️ Seeding route runs...');
     const insertedRouteRuns: { id: string; routeId: string; runDate: string }[] = [];
 
-    // Create route runs for the past 30 days
-    const today = new Date();
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Specific distribution dates for the past 2 weeks (Mon, Wed, Sat schedule)
+    const distributionDates = [
+      '2025-12-15', // Monday
+      '2025-12-17', // Wednesday
+      '2025-12-20', // Saturday
+      '2025-12-22', // Monday
+      '2025-12-24', // Wednesday (Christmas Eve)
+      '2025-12-27', // Saturday
+    ];
 
-    // Create 40 route runs across different dates
-    for (let i = 0; i < 40; i++) {
-      const runDate = randomDate(thirtyDaysAgo, today);
-      const selectedRoute = randomElement(insertedRoutes);
-      const selectedDriver = randomElement(insertedDrivers);
-      const selectedVan = randomElement(insertedVans);
+    // Create route runs for all 4 routes on each distribution date
+    for (const runDateStr of distributionDates) {
+      console.log(`  📅 Creating runs for ${runDateStr}...`);
 
-      const notes = Math.random() > 0.7
-        ? randomElement([
-          'Good weather, high turnout',
-          'Rain - distributed rain ponchos',
-          'Cold day - many requests for blankets',
-          'Distributed winter supplies',
-          'New faces at several stops',
-          'Busy route - ran low on socks',
-        ])
-        : null;
+      for (const selectedRoute of insertedRoutes) {
+        const selectedDriver = randomElement(insertedDrivers);
+        const selectedVan = randomElement(insertedVans);
 
-      const [insertedRun] = await db.insert(routeRun).values({
-        routeId: selectedRoute.id,
-        runDate: formatDate(runDate),
-        driverId: selectedDriver.id,
-        vanId: selectedVan.id,
-        notes,
-      }).returning();
+        const notes = Math.random() > 0.7
+          ? randomElement([
+            'Good weather, high turnout',
+            'Rain - distributed rain ponchos',
+            'Cold day - many requests for blankets',
+            'Distributed winter supplies',
+            'New faces at several stops',
+            'Busy route - ran low on socks',
+          ])
+          : null;
 
-      insertedRouteRuns.push({
-        id: insertedRun.id,
-        routeId: selectedRoute.id,
-        runDate: formatDate(runDate),
-      });
+        const [insertedRun] = await db.insert(routeRun).values({
+          routeId: selectedRoute.id,
+          runDate: runDateStr,
+          driverId: selectedDriver.id,
+          vanId: selectedVan.id,
+          notes,
+        }).returning();
+
+        insertedRouteRuns.push({
+          id: insertedRun.id,
+          routeId: selectedRoute.id,
+          runDate: runDateStr,
+        });
+
+        console.log(`    ✓ ${selectedRoute.name}`);
+      }
     }
     console.log(`  → Created ${insertedRouteRuns.length} route runs\n`);
 
@@ -482,41 +491,79 @@ async function seed() {
     // ==========================================
     console.log('📋 Seeding distributions...');
     let distributionCount = 0;
+    let distributionItemCount = 0;
 
-    // For each route run, create some distributions
+    // For each route run, create distributions at each stop
     for (const run of insertedRouteRuns) {
       // Get stops for this route
       const routeStops = insertedStops.filter(s => s.routeId === run.routeId);
 
-      // Create 5-15 distributions per route run
-      const numDistributions = randomInt(5, 15);
+      // Determine start time based on day of week (Sat = 5pm, Mon/Wed = 6pm)
+      const runDate = new Date(run.runDate + 'T00:00:00');
+      const dayOfWeek = runDate.getDay();
+      const startHour = dayOfWeek === 6 ? 17 : 18; // 5pm for Saturday, 6pm otherwise
 
-      for (let i = 0; i < numDistributions; i++) {
-        const selectedStop = randomElement(routeStops);
-        const selectedPerson = randomElement(insertedPersons);
-        const selectedItem = randomElement(insertedItemTypes);
-        const quantity = randomInt(1, 3);
-        const mealServed = Math.random() > 0.5 ? 1 : 0;
+      // For each stop on the route
+      for (let stopIndex = 0; stopIndex < routeStops.length; stopIndex++) {
+        const currentStop = routeStops[stopIndex];
 
-        // Create the distribution record
-        const [insertedDistribution] = await db.insert(distribution).values({
-          routeRunId: run.id,
-          routeStopId: selectedStop.id,
-          homelessPersonId: selectedPerson.id,
-          mealServed,
-        }).returning();
+        // Create 3-12 distributions per stop (varies by stop)
+        const numPeopleAtStop = randomInt(3, 12);
 
-        // Create the distribution item record
-        await db.insert(distributionItem).values({
-          distributionId: insertedDistribution.id,
-          itemTypeId: selectedItem.id,
-          quantity,
-        });
+        // Calculate time at this stop (roughly 15-20 minutes per stop)
+        const minutesIntoRoute = stopIndex * randomInt(15, 20);
+        const stopTime = new Date(run.runDate + 'T00:00:00');
+        stopTime.setHours(startHour, minutesIntoRoute, 0, 0);
 
-        distributionCount++;
+        for (let i = 0; i < numPeopleAtStop; i++) {
+          const selectedPerson = randomElement(insertedPersons);
+          const mealServed = Math.random() > 0.3 ? randomInt(1, 2) : 0; // 70% get meals, some get 2
+
+          // Add a few minutes variation for each person at the stop
+          const personTime = new Date(stopTime);
+          personTime.setMinutes(personTime.getMinutes() + randomInt(0, 10));
+
+          // Create the distribution record with proper timestamp
+          const [insertedDistribution] = await db.insert(distribution).values({
+            routeRunId: run.id,
+            routeStopId: currentStop.id,
+            homelessPersonId: selectedPerson.id,
+            mealServed,
+            distributedAt: personTime,
+            createdAt: personTime,
+          }).returning();
+
+          // Give each person 1-4 items
+          const numItems = randomInt(1, 4);
+          const givenItems = new Set<string>(); // Track items already given to avoid duplicates
+
+          for (let j = 0; j < numItems; j++) {
+            let selectedItem = randomElement(insertedItemTypes);
+            // Avoid duplicate items for same person
+            let attempts = 0;
+            while (givenItems.has(selectedItem.id) && attempts < 10) {
+              selectedItem = randomElement(insertedItemTypes);
+              attempts++;
+            }
+            givenItems.add(selectedItem.id);
+
+            const quantity = randomInt(1, 2);
+
+            await db.insert(distributionItem).values({
+              distributionId: insertedDistribution.id,
+              itemTypeId: selectedItem.id,
+              quantity,
+            });
+
+            distributionItemCount++;
+          }
+
+          distributionCount++;
+        }
       }
     }
-    console.log(`  → Created ${distributionCount} distribution records\n`);
+    console.log(`  → Created ${distributionCount} distribution records`);
+    console.log(`  → Created ${distributionItemCount} distribution items\n`);
 
     // ==========================================
     // SUMMARY
@@ -534,6 +581,10 @@ async function seed() {
     console.log(`🧑‍✈️ Drivers:           ${insertedDrivers.length}`);
     console.log(`🗓️  Route Runs:        ${insertedRouteRuns.length}`);
     console.log(`📋 Distributions:     ${distributionCount}`);
+    console.log(`📦 Distribution Items: ${distributionItemCount}`);
+    console.log('═══════════════════════════════════════════');
+    console.log('\n📅 Distribution dates seeded:');
+    distributionDates.forEach(d => console.log(`   - ${d}`));
     console.log('═══════════════════════════════════════════\n');
 
   } catch (error) {

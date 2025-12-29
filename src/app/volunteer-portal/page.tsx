@@ -13,15 +13,16 @@ import {
 
 export default function VolunteerActionsPage() {
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50/30 to-amber-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-            {/* Hero Section */}
-            <section className="relative py-24 overflow-hidden">
-                <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute top-20 right-10 w-72 h-72 bg-orange-400/20 rounded-full blur-3xl animate-pulse" />
-                    <div className="absolute bottom-20 left-10 w-96 h-96 bg-amber-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
-                </div>
+        <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-orange-50/30 to-amber-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+            {/* Background Elements */}
+            <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute top-20 right-10 w-72 h-72 bg-orange-400/20 rounded-full blur-3xl animate-pulse" />
+                <div className="absolute bottom-20 left-10 w-96 h-96 bg-amber-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+            </div>
 
-                <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Hero Section */}
+            <section className="relative pt-24 pb-12">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center max-w-3xl mx-auto">
                         <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 dark:bg-orange-900/30 rounded-full text-orange-700 dark:text-orange-300 text-sm font-medium mb-6">
                             <Heart className="w-4 h-4" />
@@ -38,7 +39,8 @@ export default function VolunteerActionsPage() {
             </section>
 
             {/* Action Cards */}
-            <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+            <section className="relative py-12">
+                <div className="px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
                 <div className="grid gap-6">
                     {/* Distributing Card */}
                     <Link
@@ -88,34 +90,8 @@ export default function VolunteerActionsPage() {
                             </div>
                         </div>
                     </Link>
-
-                    {/* Coming Soon Cards */}
-                    <div className="grid md:grid-cols-2 gap-4">
-                        <div className="bg-white/50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 opacity-60">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
-                                    <Package className="w-6 h-6 text-slate-400" />
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-slate-900 dark:text-white">Inventory Check</h3>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">Coming Soon</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white/50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 opacity-60">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
-                                    <MapPin className="w-6 h-6 text-slate-400" />
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-slate-900 dark:text-white">Route Status</h3>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">Coming Soon</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
+            </div>
             </section>
         </div>
     );
