@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, X, ClipboardList, Shield } from "lucide-react";
+import { Menu, X, ClipboardList } from "lucide-react";
 
 const navLinks = [
   { href: "/volunteer-portal", label: "Volunteer Portal", icon: ClipboardList },
-  { href: "/admin-portal", label: "Admin Portal", icon: Shield },
 ];
 
 export function Navigation() {
