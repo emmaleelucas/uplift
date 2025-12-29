@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
     ChevronLeft, Clock, User, Hash, Loader2, UserPlus, UserCheck,
     Utensils, Package, Plus, Minus, X, Search, MapPin, Check,
-    ChevronDown, ChevronRight, Shirt, Sparkles, Apple, Bed
+    ChevronDown, ChevronRight, Shirt, Sparkles, Apple, Bed, Trash2
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -42,9 +42,25 @@ interface SelectedItem {
 
 type ActiveTab = 'checkin' | 'serve';
 
+// Mock location toggle: Set to true for testing (uses first stop's coordinates)
+const USE_MOCK_LOCATION = true;
+
+// Stop detection radius in meters (used for detecting current stop AND filtering check-ins)
+const STOP_DETECTION_RADIUS = 100;
+
+interface RouteStop {
+    id: string;
+    name: string;
+    locationDescription: string | null;
+    latitude: number;
+    longitude: number;
+    stopNumber: number;
+    routeName?: string;
+}
+
 export default function DistributingPage() {
-    // Tab state
-    const [activeTab, setActiveTab] = useState<ActiveTab>('checkin');
+    // Single page state - show/hide new check-in form
+    const [showNewCheckIn, setShowNewCheckIn] = useState(false);
 
     // Check-in form state
     const [firstName, setFirstName] = useState("");
@@ -57,7 +73,7 @@ export default function DistributingPage() {
     const [alreadyCheckedInPerson, setAlreadyCheckedInPerson] = useState<CheckedInPerson | null>(null);
     const [checkingExisting, setCheckingExisting] = useState(false);
 
-    // Serve tab state
+    // People list state
     const [checkedInPeople, setCheckedInPeople] = useState<CheckedInPerson[]>([]);
     const [selectedPerson, setSelectedPerson] = useState<CheckedInPerson | null>(null);
     const [loadingPeople, setLoadingPeople] = useState(false);
@@ -83,10 +99,25 @@ export default function DistributingPage() {
     const [routeStopId, setRouteStopId] = useState<string | null>(null);
     const [routeRunId, setRouteRunId] = useState<string | null>(null);
 
+    // Stop detection state
+    const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
+    const [currentStop, setCurrentStop] = useState<RouteStop | null>(null);
+
+    // SSN reveal state (for privacy - tap to reveal, auto-hide after 3 seconds)
+    const [revealedSsnId, setRevealedSsnId] = useState<string | null>(null);
+
     // Current time
     const [currentTime, setCurrentTime] = useState("");
 
     const supabase = createClient();
+
+    // Reveal SSN temporarily (auto-hide after 3 seconds)
+    const revealSsn = (personId: string) => {
+        setRevealedSsnId(personId);
+        setTimeout(() => {
+            setRevealedSsnId(prev => prev === personId ? null : prev);
+        }, 3000);
+    };
 
     // Get current time
     useEffect(() => {
@@ -101,9 +132,9 @@ export default function DistributingPage() {
         return () => clearInterval(interval);
     }, []);
 
-    // Get location
+    // Get location (real GPS when not mocking)
     useEffect(() => {
-        if (navigator.geolocation) {
+        if (!USE_MOCK_LOCATION && navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
                     setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -111,6 +142,45 @@ export default function DistributingPage() {
                 () => { /* ignore error */ }
             );
         }
+    }, []);
+
+    // Fetch route stops (and set mock location if enabled)
+    useEffect(() => {
+        const fetchRouteStops = async () => {
+            const { data: stops } = await supabase
+                .from('route_stop')
+                .select(`
+                    id,
+                    name,
+                    location_description,
+                    latitude,
+                    longitude,
+                    stop_number,
+                    route:route_id (name)
+                `)
+                .order('stop_number');
+
+            if (stops && stops.length > 0) {
+                const mappedStops = stops.map(s => ({
+                    id: s.id,
+                    name: s.name,
+                    locationDescription: s.location_description,
+                    latitude: parseFloat(s.latitude),
+                    longitude: parseFloat(s.longitude),
+                    stopNumber: s.stop_number,
+                    routeName: (s.route as unknown as { name: string } | null)?.name
+                }));
+                setRouteStops(mappedStops);
+
+                // If mocking location, use the first stop's coordinates
+                if (USE_MOCK_LOCATION && mappedStops.length > 0) {
+                    const firstStop = mappedStops[0];
+                    setCurrentLocation({ lat: firstStop.latitude, lng: firstStop.longitude });
+                    console.log(`[Mock Location] Set to stop: ${firstStop.name} (${firstStop.latitude}, ${firstStop.longitude})`);
+                }
+            }
+        };
+        fetchRouteStops();
     }, []);
 
     // Calculate distance between two coordinates in meters (Haversine formula)
@@ -124,6 +194,36 @@ export default function DistributingPage() {
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     };
+
+    // Detect current stop based on location
+    useEffect(() => {
+        if (!currentLocation || routeStops.length === 0) {
+            setCurrentStop(null);
+            return;
+        }
+
+        // Find the nearest stop within detection radius
+        let nearestStop: RouteStop | null = null;
+        let nearestDistance = Infinity;
+
+        for (const stop of routeStops) {
+            const distance = getDistanceInMeters(
+                currentLocation.lat,
+                currentLocation.lng,
+                stop.latitude,
+                stop.longitude
+            );
+            if (distance <= STOP_DETECTION_RADIUS && distance < nearestDistance) {
+                nearestStop = stop;
+                nearestDistance = distance;
+            }
+        }
+
+        setCurrentStop(nearestStop);
+        if (nearestStop) {
+            setRouteStopId(nearestStop.id);
+        }
+    }, [currentLocation, routeStops]);
 
     // Fetch categories and item types
     useEffect(() => {
@@ -157,24 +257,24 @@ export default function DistributingPage() {
             .order('created_at', { ascending: false });
 
         if (distributions) {
-            // Filter to only distributions within 50 meters of current location
-            const nearbyDistributions = currentLocation
+            // Filter to only distributions within 100 meters of current stop
+            const filteredDistributions = currentStop
                 ? distributions.filter(dist => {
                     if (!dist.latitude || !dist.longitude) return false;
                     const distance = getDistanceInMeters(
-                        currentLocation.lat,
-                        currentLocation.lng,
+                        currentStop.latitude,
+                        currentStop.longitude,
                         dist.latitude,
                         dist.longitude
                     );
-                    return distance <= 50; // 50 meters
+                    return distance <= STOP_DETECTION_RADIUS; // 100 meters
                 })
-                : distributions;
+                : distributions; // Show all if no stop detected
 
             // Group by person ID
             const personMap = new Map<string, CheckedInPerson>();
 
-            for (const dist of nearbyDistributions) {
+            for (const dist of filteredDistributions) {
                 const person = dist.homeless_person as unknown as { id: string; first_name: string; ssn_last4_hash: string };
 
                 // Get items for this distribution
@@ -220,19 +320,19 @@ export default function DistributingPage() {
                     });
                 }
             }
-
-            setCheckedInPeople(Array.from(personMap.values()));
+            // Sort alphabetically by first name and set
+            const sortedPeople = Array.from(personMap.values())
+                .sort((a, b) => a.firstName.toLowerCase().localeCompare(b.firstName.toLowerCase()));
+            setCheckedInPeople(sortedPeople);
         }
 
         setLoadingPeople(false);
     };
 
-    // Fetch people when serve tab is active or location changes
+    // Fetch people when current stop changes
     useEffect(() => {
-        if (activeTab === 'serve') {
-            fetchCheckedInPeople();
-        }
-    }, [activeTab, currentLocation]);
+        fetchCheckedInPeople();
+    }, [currentStop]);
 
     // Check if person is already checked in today when typing name/SSN
     useEffect(() => {
@@ -300,7 +400,7 @@ export default function DistributingPage() {
     const goToExistingRecord = async () => {
         if (alreadyCheckedInPerson) {
             await fetchCheckedInPeople();
-            setActiveTab('serve');
+            setShowNewCheckIn(false);
             // Find and select the person in the list
             setTimeout(() => {
                 const person = checkedInPeople.find(p => p.id === alreadyCheckedInPerson.id);
@@ -383,10 +483,14 @@ export default function DistributingPage() {
 
             // Show success and reset all check-in state
             setCheckInSuccess(true);
+            setShowNewCheckIn(false);
             setFirstName("");
             setSsnLast4("");
             setCheckInMeals(0);
             setCheckInItems([]);
+
+            // Refresh the list to show the new person
+            await fetchCheckedInPeople();
 
             setTimeout(() => setCheckInSuccess(false), 2000);
 
@@ -418,6 +522,33 @@ export default function DistributingPage() {
             .from('distribution')
             .update({ meal_served: newCount })
             .eq('id', primaryDistId);
+    };
+
+    // Delete person from today's check-in list
+    const deleteCheckIn = async (person: CheckedInPerson) => {
+        const confirmed = window.confirm(`Remove ${person.firstName} from today's check-ins? This will delete their distribution record.`);
+        if (!confirmed) return;
+
+        // Delete all distribution records for this person today
+        for (const distId of person.distributionIds) {
+            // First delete any distribution items
+            await supabase
+                .from('distribution_item')
+                .delete()
+                .eq('distribution_id', distId);
+
+            // Then delete the distribution record
+            await supabase
+                .from('distribution')
+                .delete()
+                .eq('id', distId);
+        }
+
+        // Update local state
+        setCheckedInPeople(prev => prev.filter(p => p.id !== person.id));
+        if (selectedPerson?.id === person.id) {
+            setSelectedPerson(null);
+        }
     };
 
     // Add items to person (attached to first distribution record)
@@ -688,155 +819,159 @@ export default function DistributingPage() {
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-            {/* Header */}
-            <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
-                <div className="max-w-2xl mx-auto px-4">
-                    <div className="flex items-center justify-between h-14">
+            {/* Current Stop Indicator */}
+            <div className="max-w-2xl mx-auto px-4 pt-6">
+                <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white rounded-xl px-4 py-3">
+                    {currentStop ? (
                         <div className="flex items-center gap-3">
-                            <Link href="/volunteer-portal" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">
-                                <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" />
-                            </Link>
-                            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Distribution</h1>
+                            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold text-sm">
+                                {currentStop.stopNumber}
+                            </div>
+                            <p className="font-semibold">
+                                {currentStop.routeName && `${currentStop.routeName} - `}{currentStop.name}
+                            </p>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                            <Clock className="w-4 h-4" />
-                            {currentTime || "--:--"}
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center">
+                                <MapPin className="w-4 h-4" />
+                            </div>
+                            <p className="font-semibold text-slate-300">No stop detected</p>
                         </div>
-                    </div>
-
-                    {/* Tabs */}
-                    <div className="flex gap-2 pb-3">
-                        <button
-                            onClick={() => setActiveTab('checkin')}
-                            className={`flex-1 py-2.5 rounded-xl font-medium text-sm transition-all ${activeTab === 'checkin'
-                                ? 'bg-orange-500 text-white shadow-lg'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                                }`}
-                        >
-                            <UserPlus className="w-4 h-4 inline-block mr-2" />
-                            Check In
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('serve')}
-                            className={`flex-1 py-2.5 rounded-xl font-medium text-sm transition-all ${activeTab === 'serve'
-                                ? 'bg-orange-500 text-white shadow-lg'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                                }`}
-                        >
-                            <Package className="w-4 h-4 inline-block mr-2" />
-                            Serve ({checkedInPeople.length})
-                        </button>
-                    </div>
+                    )}
                 </div>
             </div>
 
-            <div className="max-w-2xl mx-auto px-4 py-6">
-                {/* CHECK-IN TAB */}
-                {activeTab === 'checkin' && (
-                    <div className="space-y-6">
-                        {/* Success Message */}
-                        {checkInSuccess && (
-                            <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-2xl p-4 flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
-                                    <Check className="w-5 h-5 text-white" />
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-green-800 dark:text-green-200">Checked In!</p>
-                                    <p className="text-sm text-green-600 dark:text-green-400">Ready for next person</p>
-                                </div>
+            <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+                {/* Success Message */}
+                {checkInSuccess && (
+                    <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-2xl p-4 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                            <Check className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <p className="font-semibold text-green-800 dark:text-green-200">Checked In!</p>
+                            <p className="text-sm text-green-600 dark:text-green-400">Added to the list below</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* New Check-In Button or Form */}
+                {!showNewCheckIn ? (
+                    <button
+                        onClick={() => setShowNewCheckIn(true)}
+                        className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-semibold text-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                        <UserPlus className="w-5 h-5" />
+                        Check In New Person
+                    </button>
+                ) : (
+                    /* Check-in Form */
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                                <User className="w-5 h-5 text-orange-500" />
+                                New Check-In
+                            </h2>
+                            <button
+                                onClick={() => {
+                                    setShowNewCheckIn(false);
+                                    setFirstName("");
+                                    setSsnLast4("");
+                                    setCheckInMeals(0);
+                                    setCheckInItems([]);
+                                    setAlreadyCheckedInPerson(null);
+                                }}
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
+                            >
+                                <X className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                    First Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={firstName}
+                                    onChange={(e) => setFirstName(e.target.value)}
+                                    placeholder="Name"
+                                    className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                    <Hash className="w-4 h-4 inline mr-1" />
+                                    Last 4 SSN
+                                </label>
+                                <input
+                                    type="text"
+                                    value={ssnLast4}
+                                    onChange={(e) => setSsnLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                    placeholder="0000"
+                                    maxLength={4}
+                                    inputMode="numeric"
+                                    className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-mono tracking-widest"
+                                    autoComplete="off"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Already Checked In Indicator */}
+                        {(checkingExisting || alreadyCheckedInPerson) && (
+                            <div className={`p-4 rounded-xl border mb-4 ${checkingExisting
+                                ? 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600'
+                                : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700'
+                                }`}>
+                                {checkingExisting ? (
+                                    <div className="flex items-center gap-2">
+                                        <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
+                                        <span className="text-sm text-slate-500">Checking...</span>
+                                    </div>
+                                ) : alreadyCheckedInPerson && (
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center">
+                                                <UserCheck className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                                                    Already checked in today
+                                                </p>
+                                                <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                                                    {alreadyCheckedInPerson.mealCount > 0
+                                                        ? `${alreadyCheckedInPerson.mealCount} meal${alreadyCheckedInPerson.mealCount !== 1 ? 's' : ''} served`
+                                                        : 'No meals yet'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={goToExistingRecord}
+                                            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-medium flex items-center gap-1"
+                                        >
+                                            <ChevronRight className="w-4 h-4" />
+                                            Go to record
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
 
-                        {/* Check-in Form */}
-                        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
-                            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                                <User className="w-5 h-5 text-orange-500" />
-                                Quick Check-In
-                            </h2>
-
-                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                                        First Name
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={firstName}
-                                        onChange={(e) => setFirstName(e.target.value)}
-                                        placeholder="Name"
-                                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                        autoComplete="off"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                                        <Hash className="w-4 h-4 inline mr-1" />
-                                        Last 4 SSN
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={ssnLast4}
-                                        onChange={(e) => setSsnLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                                        placeholder="0000"
-                                        maxLength={4}
-                                        inputMode="numeric"
-                                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-mono tracking-widest"
-                                        autoComplete="off"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Already Checked In Indicator */}
-                            {(checkingExisting || alreadyCheckedInPerson) && (
-                                <div className={`p-4 rounded-xl border mb-4 ${checkingExisting
-                                    ? 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600'
-                                    : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700'
-                                    }`}>
-                                    {checkingExisting ? (
-                                        <div className="flex items-center gap-2">
-                                            <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
-                                            <span className="text-sm text-slate-500">Checking...</span>
-                                        </div>
-                                    ) : alreadyCheckedInPerson && (
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center">
-                                                    <UserCheck className="w-5 h-5 text-white" />
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-yellow-800 dark:text-yellow-200">
-                                                        Already checked in today
-                                                    </p>
-                                                    <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                                                        {alreadyCheckedInPerson.mealCount > 0
-                                                            ? `${alreadyCheckedInPerson.mealCount} meal${alreadyCheckedInPerson.mealCount !== 1 ? 's' : ''} served`
-                                                            : 'No meals yet'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <button
-                                                onClick={goToExistingRecord}
-                                                className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-medium flex items-center gap-1"
-                                            >
-                                                <ChevronRight className="w-4 h-4" />
-                                                Go to record
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Meal Counter */}
-                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-4">
-                                <div className="flex items-center gap-3">
+                        {/* Meals Counter */}
+                        <div className={`bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-4 ${(!firstName.trim() || ssnLast4.length !== 4 || alreadyCheckedInPerson) ? 'opacity-50' : ''}`}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
                                     <Utensils className="w-5 h-5 text-orange-500" />
                                     <span className="font-medium text-slate-900 dark:text-white">Meals</span>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => setCheckInMeals(Math.max(0, checkInMeals - 1))}
-                                        disabled={checkInMeals === 0}
-                                        className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center disabled:opacity-50"
+                                        disabled={checkInMeals === 0 || !firstName.trim() || ssnLast4.length !== 4 || !!alreadyCheckedInPerson}
+                                        className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Minus className="w-5 h-5" />
                                     </button>
@@ -845,581 +980,605 @@ export default function DistributingPage() {
                                     </span>
                                     <button
                                         onClick={() => setCheckInMeals(checkInMeals + 1)}
-                                        className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center"
+                                        disabled={!firstName.trim() || ssnLast4.length !== 4 || !!alreadyCheckedInPerson}
+                                        className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Plus className="w-5 h-5" />
                                     </button>
                                 </div>
                             </div>
-
-                            {/* Items Section */}
-                            <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <Package className="w-5 h-5 text-blue-500" />
-                                        <span className="font-medium text-slate-900 dark:text-white">Items</span>
-                                        {checkInItems.length > 0 && (
-                                            <span className="text-sm text-slate-500">
-                                                ({checkInItems.reduce((sum, i) => sum + i.quantity, 0)})
-                                            </span>
-                                        )}
-                                    </div>
-                                    <button
-                                        onClick={() => setShowCheckInItemPicker(true)}
-                                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center gap-1"
-                                    >
-                                        <Plus className="w-4 h-4" />
-                                        Add
-                                    </button>
-                                </div>
-                                {checkInItems.length > 0 ? (
-                                    <div className="space-y-2">
-                                        {checkInItems.map(item => (
-                                            <div key={item.itemTypeId} className="flex items-center justify-between bg-white dark:bg-slate-600 rounded-lg px-3 py-2">
-                                                <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={() => setCheckInItems(prev =>
-                                                            prev.map(i => i.itemTypeId === item.itemTypeId ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i)
-                                                                .filter(i => i.quantity > 0)
-                                                        )}
-                                                        className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-500 flex items-center justify-center"
-                                                    >
-                                                        <Minus className="w-3 h-3" />
-                                                    </button>
-                                                    <span className="text-sm font-medium w-4 text-center">{item.quantity}</span>
-                                                    <button
-                                                        onClick={() => setCheckInItems(prev =>
-                                                            prev.map(i => i.itemTypeId === item.itemTypeId ? { ...i, quantity: i.quantity + 1 } : i)
-                                                        )}
-                                                        className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center"
-                                                    >
-                                                        <Plus className="w-3 h-3" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">No items yet</p>
-                                )}
-                            </div>
-
-                            <button
-                                onClick={handleCheckIn}
-                                disabled={!canCheckIn}
-                                className={`w-full py-4 rounded-xl font-semibold text-lg transition-all ${canCheckIn
-                                    ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-lg'
-                                    : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
-                                    }`}
-                            >
-                                {checkingIn ? (
-                                    <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                                ) : (
-                                    <>
-                                        <UserPlus className="w-5 h-5 inline-block mr-2" />
-                                        Check In
-                                        {(checkInMeals > 0 || checkInItems.length > 0) && (
-                                            <span className="ml-2 text-sm opacity-80">
-                                                ({checkInMeals > 0 ? `${checkInMeals} meal${checkInMeals !== 1 ? 's' : ''}` : ''}
-                                                {checkInMeals > 0 && checkInItems.length > 0 ? ', ' : ''}
-                                                {checkInItems.length > 0 ? `${checkInItems.reduce((s, i) => s + i.quantity, 0)} item${checkInItems.reduce((s, i) => s + i.quantity, 0) !== 1 ? 's' : ''}` : ''})
-                                            </span>
-                                        )}
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* SERVE TAB */}
-                {activeTab === 'serve' && (
-                    <div className="space-y-4">
-                        {/* Location Indicator */}
-                        <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                            <MapPin className="w-4 h-4" />
-                            {currentLocation
-                                ? <span>Showing people within 50m</span>
-                                : <span className="text-yellow-600">Location not available</span>
-                            }
                         </div>
 
-                        {loadingPeople ? (
-                            <div className="flex items-center justify-center py-12">
-                                <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
-                            </div>
-                        ) : checkedInPeople.length === 0 ? (
-                            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
-                                <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                                <p className="text-slate-600 dark:text-slate-400">
-                                    {currentLocation
-                                        ? "No one checked in nearby"
-                                        : "Enable location to see nearby check-ins"
-                                    }
-                                </p>
-                                <button
-                                    onClick={() => setActiveTab('checkin')}
-                                    className="mt-4 px-6 py-2 bg-orange-500 text-white rounded-xl font-medium"
-                                >
-                                    Check someone in
-                                </button>
-                            </div>
-                        ) : (
-                            checkedInPeople.map((person) => (
-                                <div
-                                    key={person.id}
-                                    className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
-                                >
-                                    {/* Person Header */}
-                                    <button
-                                        onClick={() => setSelectedPerson(selectedPerson?.id === person.id ? null : person)}
-                                        className="w-full p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                                                <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                                                    {person.firstName.charAt(0).toUpperCase()}
-                                                </span>
-                                            </div>
-                                            <div className="text-left">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-slate-900 dark:text-white">{person.firstName}</p>
-                                                    <span className="text-xs px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full font-mono">
-                                                        ••••{person.ssnLast4}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-3 text-sm text-slate-500">
-                                                    {person.mealCount > 0 && (
-                                                        <span className="flex items-center gap-1">
-                                                            <Utensils className="w-3 h-3" />
-                                                            {person.mealCount} meal{person.mealCount !== 1 ? 's' : ''}
-                                                        </span>
-                                                    )}
-                                                    {person.items.length > 0 && (
-                                                        <span className="flex items-center gap-1">
-                                                            <Package className="w-3 h-3" />
-                                                            {person.items.reduce((sum, i) => sum + i.quantity, 0)} item{person.items.reduce((sum, i) => sum + i.quantity, 0) !== 1 ? 's' : ''}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {selectedPerson?.id === person.id ? (
-                                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                                        ) : (
-                                            <ChevronRight className="w-5 h-5 text-slate-400" />
-                                        )}
-                                    </button>
-
-                                    {/* Expanded Content */}
-                                    {selectedPerson?.id === person.id && (
-                                        <div className="px-4 pb-4 border-t border-slate-100 dark:border-slate-700 pt-4 space-y-4">
-                                            {/* Meal Counter */}
-                                            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
-                                                <div className="flex items-center gap-3">
-                                                    <Utensils className="w-5 h-5 text-orange-500" />
-                                                    <span className="font-medium text-slate-900 dark:text-white">Meals</span>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => updateMealCount(person, -1)}
-                                                        disabled={person.mealCount === 0 || updatingMeals}
-                                                        className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center disabled:opacity-50"
-                                                    >
-                                                        <Minus className="w-5 h-5" />
-                                                    </button>
-                                                    <span className="text-2xl font-bold text-slate-900 dark:text-white w-8 text-center">
-                                                        {person.mealCount}
-                                                    </span>
-                                                    <button
-                                                        onClick={() => updateMealCount(person, 1)}
-                                                        disabled={updatingMeals}
-                                                        className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center disabled:opacity-50"
-                                                    >
-                                                        <Plus className="w-5 h-5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Items Given */}
-                                            {person.items.length > 0 && (
-                                                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
-                                                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                                                        <Package className="w-4 h-4" />
-                                                        Items Given
-                                                    </p>
-                                                    <div className="space-y-2">
-                                                        {person.items.map((item) => (
-                                                            <div key={item.id} className="flex items-center justify-between bg-white dark:bg-slate-600 rounded-lg px-3 py-2">
-                                                                <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <button
-                                                                        onClick={() => updateDistributionItem(item.id, item.quantity - 1)}
-                                                                        className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-500 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900"
-                                                                    >
-                                                                        <Minus className="w-4 h-4" />
-                                                                    </button>
-                                                                    <span className="text-sm font-medium w-6 text-center text-slate-900 dark:text-white">{item.quantity}</span>
-                                                                    <button
-                                                                        onClick={() => updateDistributionItem(item.id, item.quantity + 1)}
-                                                                        className="w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600"
-                                                                    >
-                                                                        <Plus className="w-4 h-4" />
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Add Items Button */}
-                                            <button
-                                                onClick={() => setShowItemPicker(true)}
-                                                className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                                            >
-                                                <Plus className="w-5 h-5" />
-                                                Add Items
-                                            </button>
-                                        </div>
+                        {/* Items Section */}
+                        <div className={`bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6 ${(!firstName.trim() || ssnLast4.length !== 4 || alreadyCheckedInPerson) ? 'opacity-50' : ''}`}>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Package className="w-5 h-5 text-blue-500" />
+                                    <span className="font-medium text-slate-900 dark:text-white">Items</span>
+                                    {checkInItems.length > 0 && (
+                                        <span className="text-sm text-slate-500">
+                                            ({checkInItems.reduce((sum, i) => sum + i.quantity, 0)})
+                                        </span>
                                     )}
                                 </div>
-                            ))
-                        )}
-
-                        {/* Refresh Button */}
-                        {checkedInPeople.length > 0 && (
-                            <button
-                                onClick={fetchCheckedInPeople}
-                                className="w-full py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-medium"
-                            >
-                                Refresh List
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Item Picker Modal */}
-            {showItemPicker && selectedPerson && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-                    <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl max-h-[80vh] overflow-hidden flex flex-col">
-                        {/* Modal Header */}
-                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                            <div>
-                                <h3 className="font-semibold text-slate-900 dark:text-white">Add Items</h3>
-                                <p className="text-sm text-slate-500">For {selectedPerson.firstName}</p>
+                                <button
+                                    onClick={() => setShowCheckInItemPicker(true)}
+                                    disabled={!firstName.trim() || ssnLast4.length !== 4 || !!alreadyCheckedInPerson}
+                                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Add
+                                </button>
                             </div>
-                            <button
-                                onClick={() => {
-                                    setShowItemPicker(false);
-                                    setPendingItems([]);
-                                    setSelectedCategory(null);
-                                    resetClothingPicker();
-                                }}
-                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Pending Items */}
-                        {pendingItems.length > 0 && (
-                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800">
-                                <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">Items to add:</p>
+                            {checkInItems.length > 0 && (
                                 <div className="space-y-2">
-                                    {pendingItems.map(item => (
-                                        <div key={item.itemTypeId} className="flex items-center justify-between bg-white dark:bg-slate-700 rounded-lg px-3 py-2">
+                                    {checkInItems.map(item => (
+                                        <div key={item.itemTypeId} className="flex items-center justify-between bg-white dark:bg-slate-600 rounded-lg px-3 py-2">
                                             <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
                                             <div className="flex items-center gap-2">
-                                                <button onClick={() => updatePendingQuantity(item.itemTypeId, -1)} className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center">
+                                                <button
+                                                    onClick={() => setCheckInItems(prev => {
+                                                        const newQty = item.quantity - 1;
+                                                        if (newQty <= 0) return prev.filter(i => i.itemTypeId !== item.itemTypeId);
+                                                        return prev.map(i => i.itemTypeId === item.itemTypeId ? { ...i, quantity: newQty } : i);
+                                                    })}
+                                                    className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-500 flex items-center justify-center"
+                                                >
                                                     <Minus className="w-3 h-3" />
                                                 </button>
                                                 <span className="text-sm font-medium w-4 text-center">{item.quantity}</span>
-                                                <button onClick={() => updatePendingQuantity(item.itemTypeId, 1)} className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                                                <button
+                                                    onClick={() => setCheckInItems(prev =>
+                                                        prev.map(i => i.itemTypeId === item.itemTypeId ? { ...i, quantity: i.quantity + 1 } : i)
+                                                    )}
+                                                    className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center"
+                                                >
                                                     <Plus className="w-3 h-3" />
                                                 </button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                            </div>
-                        )}
-
-                        {/* Content Area */}
-                        <div className="flex-1 overflow-y-auto p-4">
-                            {!selectedCategory ? (
-                                /* Step 1: Select Category */
-                                <div>
-                                    <p className="text-sm text-slate-500 mb-3">Select a category:</p>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {categories.map(cat => {
-                                            const { icon: Icon, color, bg } = getCategoryIcon(cat.name);
-                                            return (
-                                                <button
-                                                    key={cat.id}
-                                                    onClick={() => { setSelectedCategory(cat.id); resetClothingPicker(); }}
-                                                    className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 flex flex-col items-center gap-2 transition-colors"
-                                                >
-                                                    <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
-                                                        <Icon className={`w-6 h-6 ${color}`} />
-                                                    </div>
-                                                    <span className="font-medium text-slate-900 dark:text-white text-sm text-center">{cat.name}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ) : isClothingCategory(selectedCategory) ? (
-                                /* Clothing Multi-Step */
-                                <div>
-                                    <button
-                                        onClick={() => { setSelectedCategory(null); resetClothingPicker(); }}
-                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
-                                    >
-                                        <ChevronLeft className="w-4 h-4" /> Back to categories
-                                    </button>
-
-                                    {clothingStep === 'type' && (
-                                        <div className="space-y-2">
-                                            <p className="text-sm text-slate-500 mb-2">Select type:</p>
-                                            {getClothingTypes().map(type => (
-                                                <button
-                                                    key={type}
-                                                    onClick={() => selectClothingType(type)}
-                                                    className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
-                                                >
-                                                    <span className="font-medium text-slate-900 dark:text-white">{type}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {clothingStep === 'gender' && (
-                                        <div>
-                                            <button onClick={resetClothingPicker} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
-                                                <ChevronLeft className="w-4 h-4" /> Back
-                                            </button>
-                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType}</p>
-                                            <div className="grid grid-cols-3 gap-3">
-                                                {getClothingGenders().map(gender => (
-                                                    <button
-                                                        key={gender}
-                                                        onClick={() => selectClothingGender(gender)}
-                                                        className="p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
-                                                    >
-                                                        <span className="text-2xl block mb-1">
-                                                            {gender === 'male' && '👨'}
-                                                            {gender === 'female' && '👩'}
-                                                            {gender === 'none' && '👤'}
-                                                        </span>
-                                                        <span className="text-sm capitalize">{gender === 'none' ? 'Unisex' : gender}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {clothingStep === 'size' && (
-                                        <div>
-                                            <button onClick={() => setClothingStep('gender')} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
-                                                <ChevronLeft className="w-4 h-4" /> Back
-                                            </button>
-                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType} - {selectedGender === 'none' ? 'Unisex' : selectedGender}</p>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {getClothingSizes().map(item => (
-                                                    <button
-                                                        key={item.id}
-                                                        onClick={() => addPendingItem(item)}
-                                                        className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
-                                                    >
-                                                        <span className="font-medium text-slate-900 dark:text-white">{item.size}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                /* Non-clothing items */
-                                <div>
-                                    <button
-                                        onClick={() => setSelectedCategory(null)}
-                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
-                                    >
-                                        <ChevronLeft className="w-4 h-4" /> Back to categories
-                                    </button>
-                                    <p className="text-sm text-slate-500 mb-2">Select item:</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {filteredItems.map(item => (
-                                            <button
-                                                key={item.id}
-                                                onClick={() => addPendingItem(item)}
-                                                className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
-                                            >
-                                                <span className="text-sm font-medium text-slate-900 dark:text-white">{item.name}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
                             )}
                         </div>
 
-                        {/* Save Button */}
-                        {pendingItems.length > 0 && (
-                            <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                        {/* Check In Button */}
+                        <button
+                            onClick={handleCheckIn}
+                            disabled={!firstName.trim() || ssnLast4.length !== 4 || checkingIn || alreadyCheckedInPerson !== null}
+                            className={`w-full py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-2 transition-all ${firstName.trim() && ssnLast4.length === 4 && !alreadyCheckedInPerson
+                                ? 'bg-green-500 hover:bg-green-600 text-white'
+                                : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                                }`}
+                        >
+                            {checkingIn ? (
+                                <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                            ) : (
+                                <>
+                                    <UserPlus className="w-5 h-5" />
+                                    Check In
+                                    {(checkInMeals > 0 || checkInItems.length > 0) && (
+                                        <span className="ml-2 text-sm opacity-80">
+                                            ({checkInMeals > 0 ? `${checkInMeals} meal${checkInMeals !== 1 ? 's' : ''}` : ''}
+                                            {checkInMeals > 0 && checkInItems.length > 0 ? ', ' : ''}
+                                            {checkInItems.length > 0 ? `${checkInItems.reduce((s, i) => s + i.quantity, 0)} item${checkInItems.reduce((s, i) => s + i.quantity, 0) !== 1 ? 's' : ''}` : ''})
+                                        </span>
+                                    )}
+                                </>
+                            )}
+                        </button>
+                    </div>
+                )}
+
+                {/* List Header */}
+                <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                    {currentStop ? (
+                        <>
+                            <MapPin className="w-4 h-4" />
+                            <span>Checked in at this stop ({checkedInPeople.length})</span>
+                        </>
+                    ) : (
+                        <>
+                            <Clock className="w-4 h-4" />
+                            <span>Today&apos;s check-ins ({checkedInPeople.length})</span>
+                        </>
+                    )}
+                </div>
+
+                {/* Checked-in People List */}
+                {loadingPeople ? (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                    </div>
+                ) : checkedInPeople.length === 0 ? (
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
+                        {currentStop ? (
+                            <>
+                                <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                                <p className="text-slate-600 dark:text-slate-400">
+                                    No one checked in at this stop yet
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <UserPlus className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                                <p className="text-slate-600 dark:text-slate-400">
+                                    Move to a stop to see check-ins
+                                </p>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    checkedInPeople.map((person) => (
+                        <div
+                            key={person.id}
+                            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+                        >
+                            {/* Person Header */}
+                            <button
+                                onClick={() => setSelectedPerson(selectedPerson?.id === person.id ? null : person)}
+                                className="w-full p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                            >
+                                <div className="text-left">
+                                    <div className="flex items-center gap-2">
+                                        <p className="font-semibold text-slate-900 dark:text-white">{person.firstName}</p>
+                                        <span
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                revealSsn(person.id);
+                                            }}
+                                            className={`text-xs px-2 py-0.5 rounded-full font-mono transition-all cursor-pointer ${revealedSsnId === person.id
+                                                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400'
+                                                : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600'
+                                                }`}
+                                        >
+                                            {revealedSsnId === person.id ? person.ssnLast4 : '••••'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-sm text-slate-500">
+                                        {person.mealCount > 0 && (
+                                            <span className="flex items-center gap-1">
+                                                <Utensils className="w-3 h-3" />
+                                                {person.mealCount} meal{person.mealCount !== 1 ? 's' : ''}
+                                            </span>
+                                        )}
+                                        {person.items.length > 0 && (
+                                            <span className="flex items-center gap-1">
+                                                <Package className="w-3 h-3" />
+                                                {person.items.reduce((sum, i) => sum + i.quantity, 0)} item{person.items.reduce((sum, i) => sum + i.quantity, 0) !== 1 ? 's' : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                {selectedPerson?.id === person.id ? (
+                                    <ChevronDown className="w-5 h-5 text-slate-400" />
+                                ) : (
+                                    <ChevronRight className="w-5 h-5 text-slate-400" />
+                                )}
+                            </button>
+
+                            {/* Expanded Content */}
+                            {selectedPerson?.id === person.id && (
+                                <div className="px-4 pb-4 border-t border-slate-100 dark:border-slate-700 pt-4 space-y-4">
+                                    {/* Meal Counter */}
+                                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
+                                        <div className="flex items-center gap-3">
+                                            <Utensils className="w-5 h-5 text-orange-500" />
+                                            <span className="font-medium text-slate-900 dark:text-white">Meals</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => updateMealCount(person, -1)}
+                                                disabled={person.mealCount === 0 || updatingMeals}
+                                                className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center disabled:opacity-50"
+                                            >
+                                                <Minus className="w-5 h-5" />
+                                            </button>
+                                            <span className="text-2xl font-bold text-slate-900 dark:text-white w-8 text-center">
+                                                {person.mealCount}
+                                            </span>
+                                            <button
+                                                onClick={() => updateMealCount(person, 1)}
+                                                disabled={updatingMeals}
+                                                className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center disabled:opacity-50"
+                                            >
+                                                <Plus className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Items Given */}
+                                    {person.items.length > 0 && (
+                                        <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
+                                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                                                <Package className="w-4 h-4" />
+                                                Items Given
+                                            </p>
+                                            <div className="space-y-2">
+                                                {person.items.map((item) => (
+                                                    <div key={item.id} className="flex items-center justify-between bg-white dark:bg-slate-600 rounded-lg px-3 py-2">
+                                                        <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => updateDistributionItem(item.id, item.quantity - 1)}
+                                                                className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-500 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900"
+                                                            >
+                                                                <Minus className="w-4 h-4" />
+                                                            </button>
+                                                            <span className="text-sm font-medium w-6 text-center text-slate-900 dark:text-white">{item.quantity}</span>
+                                                            <button
+                                                                onClick={() => updateDistributionItem(item.id, item.quantity + 1)}
+                                                                className="w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600"
+                                                            >
+                                                                <Plus className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Add Items Button */}
+                                    <button
+                                        onClick={() => setShowItemPicker(true)}
+                                        className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Plus className="w-5 h-5" />
+                                        Add Items
+                                    </button>
+
+                                    {/* Delete Button */}
+                                    <button
+                                        onClick={() => deleteCheckIn(person)}
+                                        className="w-full py-3 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Trash2 className="w-5 h-5" />
+                                        Remove Check-In
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ))
+                )
+                }
+
+                {/* Refresh Button */}
+                {
+                    checkedInPeople.length > 0 && (
+                        <button
+                            onClick={fetchCheckedInPeople}
+                            className="w-full py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-medium"
+                        >
+                            Refresh List
+                        </button>
+                    )
+                }
+            </div >
+
+            {/* Item Picker Modal */}
+            {
+                showItemPicker && selectedPerson && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+                        <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                            {/* Modal Header */}
+                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                <div>
+                                    <h3 className="font-semibold text-slate-900 dark:text-white">Add Items</h3>
+                                    <p className="text-sm text-slate-500">For {selectedPerson.firstName}</p>
+                                </div>
                                 <button
-                                    onClick={addItemsToPerson}
-                                    className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold"
+                                    onClick={() => {
+                                        setShowItemPicker(false);
+                                        setPendingItems([]);
+                                        setSelectedCategory(null);
+                                        resetClothingPicker();
+                                    }}
+                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                                 >
-                                    Add {pendingItems.reduce((sum, i) => sum + i.quantity, 0)} Item{pendingItems.reduce((sum, i) => sum + i.quantity, 0) !== 1 ? 's' : ''}
+                                    <X className="w-5 h-5" />
                                 </button>
                             </div>
-                        )}
-                    </div>
-                </div>
-            )}
 
-            {/* Check-In Item Picker Modal */}
-            {showCheckInItemPicker && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-                    <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl max-h-[80vh] overflow-hidden flex flex-col">
-                        {/* Modal Header */}
-                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                            <div>
-                                <h3 className="font-semibold text-slate-900 dark:text-white">Add Item</h3>
-                                <p className="text-sm text-slate-500">Select an item to add</p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setShowCheckInItemPicker(false);
-                                    setSelectedCategory(null);
-                                    resetClothingPicker();
-                                }}
-                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Content Area */}
-                        <div className="flex-1 overflow-y-auto p-4">
-                            {!selectedCategory ? (
-                                /* Step 1: Select Category */
-                                <div>
-                                    <p className="text-sm text-slate-500 mb-3">Select a category:</p>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {categories.map(cat => {
-                                            const { icon: Icon, color, bg } = getCategoryIcon(cat.name);
-                                            return (
-                                                <button
-                                                    key={cat.id}
-                                                    onClick={() => { setSelectedCategory(cat.id); resetClothingPicker(); }}
-                                                    className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 flex flex-col items-center gap-2 transition-colors"
-                                                >
-                                                    <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
-                                                        <Icon className={`w-6 h-6 ${color}`} />
-                                                    </div>
-                                                    <span className="font-medium text-slate-900 dark:text-white text-sm text-center">{cat.name}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ) : isClothingCategory(selectedCategory) ? (
-                                /* Clothing Multi-Step */
-                                <div>
-                                    <button
-                                        onClick={() => { setSelectedCategory(null); resetClothingPicker(); }}
-                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
-                                    >
-                                        <ChevronLeft className="w-4 h-4" /> Back to categories
-                                    </button>
-
-                                    {clothingStep === 'type' && (
-                                        <div className="space-y-2">
-                                            <p className="text-sm text-slate-500 mb-2">Select type:</p>
-                                            {getClothingTypes().map(type => (
-                                                <button
-                                                    key={type}
-                                                    onClick={() => selectClothingType(type)}
-                                                    className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
-                                                >
-                                                    <span className="font-medium text-slate-900 dark:text-white">{type}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {clothingStep === 'gender' && (
-                                        <div>
-                                            <button onClick={resetClothingPicker} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
-                                                <ChevronLeft className="w-4 h-4" /> Back
-                                            </button>
-                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType}</p>
-                                            <div className="grid grid-cols-3 gap-3">
-                                                {getClothingGenders().map(gender => (
-                                                    <button
-                                                        key={gender}
-                                                        onClick={() => selectClothingGender(gender)}
-                                                        className="p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
-                                                    >
-                                                        <span className="text-2xl block mb-1">
-                                                            {gender === 'male' && '👨'}
-                                                            {gender === 'female' && '👩'}
-                                                            {gender === 'none' && '👤'}
-                                                        </span>
-                                                        <span className="text-sm capitalize">{gender === 'none' ? 'Unisex' : gender}</span>
+                            {/* Pending Items */}
+                            {pendingItems.length > 0 && (
+                                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800">
+                                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">Items to add:</p>
+                                    <div className="space-y-2">
+                                        {pendingItems.map(item => (
+                                            <div key={item.itemTypeId} className="flex items-center justify-between bg-white dark:bg-slate-700 rounded-lg px-3 py-2">
+                                                <span className="text-sm text-slate-900 dark:text-white">{item.name}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <button onClick={() => updatePendingQuantity(item.itemTypeId, -1)} className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center">
+                                                        <Minus className="w-3 h-3" />
                                                     </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {clothingStep === 'size' && (
-                                        <div>
-                                            <button onClick={() => setClothingStep('gender')} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
-                                                <ChevronLeft className="w-4 h-4" /> Back
-                                            </button>
-                                            <p className="text-sm text-slate-500 mb-3">{selectedClothingType} - {selectedGender === 'none' ? 'Unisex' : selectedGender}</p>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {getClothingSizes().map(item => (
-                                                    <button
-                                                        key={item.id}
-                                                        onClick={() => addCheckInItem(item)}
-                                                        className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
-                                                    >
-                                                        <span className="font-medium text-slate-900 dark:text-white">{item.size}</span>
+                                                    <span className="text-sm font-medium w-4 text-center">{item.quantity}</span>
+                                                    <button onClick={() => updatePendingQuantity(item.itemTypeId, 1)} className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                                                        <Plus className="w-3 h-3" />
                                                     </button>
-                                                ))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                /* Non-clothing items */
-                                <div>
-                                    <button
-                                        onClick={() => setSelectedCategory(null)}
-                                        className="text-sm text-slate-500 mb-4 flex items-center gap-1"
-                                    >
-                                        <ChevronLeft className="w-4 h-4" /> Back to categories
-                                    </button>
-                                    <p className="text-sm text-slate-500 mb-2">Select item:</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {filteredItems.map(item => (
-                                            <button
-                                                key={item.id}
-                                                onClick={() => addCheckInItem(item)}
-                                                className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
-                                            >
-                                                <span className="text-sm font-medium text-slate-900 dark:text-white">{item.name}</span>
-                                            </button>
                                         ))}
                                     </div>
                                 </div>
                             )}
+
+                            {/* Content Area */}
+                            <div className="flex-1 overflow-y-auto p-4">
+                                {!selectedCategory ? (
+                                    /* Step 1: Select Category */
+                                    <div>
+                                        <p className="text-sm text-slate-500 mb-3">Select a category:</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {categories.map(cat => {
+                                                const { icon: Icon, color, bg } = getCategoryIcon(cat.name);
+                                                return (
+                                                    <button
+                                                        key={cat.id}
+                                                        onClick={() => { setSelectedCategory(cat.id); resetClothingPicker(); }}
+                                                        className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 flex flex-col items-center gap-2 transition-colors"
+                                                    >
+                                                        <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
+                                                            <Icon className={`w-6 h-6 ${color}`} />
+                                                        </div>
+                                                        <span className="font-medium text-slate-900 dark:text-white text-sm text-center">{cat.name}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : isClothingCategory(selectedCategory) ? (
+                                    /* Clothing Multi-Step */
+                                    <div>
+                                        <button
+                                            onClick={() => { setSelectedCategory(null); resetClothingPicker(); }}
+                                            className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" /> Back to categories
+                                        </button>
+
+                                        {clothingStep === 'type' && (
+                                            <div className="space-y-2">
+                                                <p className="text-sm text-slate-500 mb-2">Select type:</p>
+                                                {getClothingTypes().map(type => (
+                                                    <button
+                                                        key={type}
+                                                        onClick={() => selectClothingType(type)}
+                                                        className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                    >
+                                                        <span className="font-medium text-slate-900 dark:text-white">{type}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {clothingStep === 'gender' && (
+                                            <div>
+                                                <button onClick={resetClothingPicker} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                    <ChevronLeft className="w-4 h-4" /> Back
+                                                </button>
+                                                <p className="text-sm text-slate-500 mb-3">{selectedClothingType}</p>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {getClothingGenders().map(gender => (
+                                                        <button
+                                                            key={gender}
+                                                            onClick={() => selectClothingGender(gender)}
+                                                            className="p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                        >
+                                                            <span className="text-2xl block mb-1">
+                                                                {gender === 'male' && '👨'}
+                                                                {gender === 'female' && '👩'}
+                                                                {gender === 'none' && '👤'}
+                                                            </span>
+                                                            <span className="text-sm capitalize">{gender === 'none' ? 'Unisex' : gender}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {clothingStep === 'size' && (
+                                            <div>
+                                                <button onClick={() => setClothingStep('gender')} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                    <ChevronLeft className="w-4 h-4" /> Back
+                                                </button>
+                                                <p className="text-sm text-slate-500 mb-3">{selectedClothingType} - {selectedGender === 'none' ? 'Unisex' : selectedGender}</p>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {getClothingSizes().map(item => (
+                                                        <button
+                                                            key={item.id}
+                                                            onClick={() => addPendingItem(item)}
+                                                            className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                        >
+                                                            <span className="font-medium text-slate-900 dark:text-white">{item.size}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* Non-clothing items */
+                                    <div>
+                                        <button
+                                            onClick={() => setSelectedCategory(null)}
+                                            className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" /> Back to categories
+                                        </button>
+                                        <p className="text-sm text-slate-500 mb-2">Select item:</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {filteredItems.map(item => (
+                                                <button
+                                                    key={item.id}
+                                                    onClick={() => addPendingItem(item)}
+                                                    className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                >
+                                                    <span className="text-sm font-medium text-slate-900 dark:text-white">{item.name}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Save Button */}
+                            {pendingItems.length > 0 && (
+                                <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                                    <button
+                                        onClick={addItemsToPerson}
+                                        className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold"
+                                    >
+                                        Add {pendingItems.reduce((sum, i) => sum + i.quantity, 0)} Item{pendingItems.reduce((sum, i) => sum + i.quantity, 0) !== 1 ? 's' : ''}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+
+            {/* Check-In Item Picker Modal */}
+            {
+                showCheckInItemPicker && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+                        <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                            {/* Modal Header */}
+                            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                <div>
+                                    <h3 className="font-semibold text-slate-900 dark:text-white">Add Item</h3>
+                                    <p className="text-sm text-slate-500">Select an item to add</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowCheckInItemPicker(false);
+                                        setSelectedCategory(null);
+                                        resetClothingPicker();
+                                    }}
+                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Content Area */}
+                            <div className="flex-1 overflow-y-auto p-4">
+                                {!selectedCategory ? (
+                                    /* Step 1: Select Category */
+                                    <div>
+                                        <p className="text-sm text-slate-500 mb-3">Select a category:</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {categories.map(cat => {
+                                                const { icon: Icon, color, bg } = getCategoryIcon(cat.name);
+                                                return (
+                                                    <button
+                                                        key={cat.id}
+                                                        onClick={() => { setSelectedCategory(cat.id); resetClothingPicker(); }}
+                                                        className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 flex flex-col items-center gap-2 transition-colors"
+                                                    >
+                                                        <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
+                                                            <Icon className={`w-6 h-6 ${color}`} />
+                                                        </div>
+                                                        <span className="font-medium text-slate-900 dark:text-white text-sm text-center">{cat.name}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : isClothingCategory(selectedCategory) ? (
+                                    /* Clothing Multi-Step */
+                                    <div>
+                                        <button
+                                            onClick={() => { setSelectedCategory(null); resetClothingPicker(); }}
+                                            className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" /> Back to categories
+                                        </button>
+
+                                        {clothingStep === 'type' && (
+                                            <div className="space-y-2">
+                                                <p className="text-sm text-slate-500 mb-2">Select type:</p>
+                                                {getClothingTypes().map(type => (
+                                                    <button
+                                                        key={type}
+                                                        onClick={() => selectClothingType(type)}
+                                                        className="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                    >
+                                                        <span className="font-medium text-slate-900 dark:text-white">{type}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {clothingStep === 'gender' && (
+                                            <div>
+                                                <button onClick={resetClothingPicker} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                    <ChevronLeft className="w-4 h-4" /> Back
+                                                </button>
+                                                <p className="text-sm text-slate-500 mb-3">{selectedClothingType}</p>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {getClothingGenders().map(gender => (
+                                                        <button
+                                                            key={gender}
+                                                            onClick={() => selectClothingGender(gender)}
+                                                            className="p-4 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                        >
+                                                            <span className="text-2xl block mb-1">
+                                                                {gender === 'male' && '👨'}
+                                                                {gender === 'female' && '👩'}
+                                                                {gender === 'none' && '👤'}
+                                                            </span>
+                                                            <span className="text-sm capitalize">{gender === 'none' ? 'Unisex' : gender}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {clothingStep === 'size' && (
+                                            <div>
+                                                <button onClick={() => setClothingStep('gender')} className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                                                    <ChevronLeft className="w-4 h-4" /> Back
+                                                </button>
+                                                <p className="text-sm text-slate-500 mb-3">{selectedClothingType} - {selectedGender === 'none' ? 'Unisex' : selectedGender}</p>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {getClothingSizes().map(item => (
+                                                        <button
+                                                            key={item.id}
+                                                            onClick={() => addCheckInItem(item)}
+                                                            className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-center hover:bg-orange-50"
+                                                        >
+                                                            <span className="font-medium text-slate-900 dark:text-white">{item.size}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* Non-clothing items */
+                                    <div>
+                                        <button
+                                            onClick={() => setSelectedCategory(null)}
+                                            className="text-sm text-slate-500 mb-4 flex items-center gap-1"
+                                        >
+                                            <ChevronLeft className="w-4 h-4" /> Back to categories
+                                        </button>
+                                        <p className="text-sm text-slate-500 mb-2">Select item:</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {filteredItems.map(item => (
+                                                <button
+                                                    key={item.id}
+                                                    onClick={() => addCheckInItem(item)}
+                                                    className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-left hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                                >
+                                                    <span className="text-sm font-medium text-slate-900 dark:text-white">{item.name}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }
