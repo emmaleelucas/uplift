@@ -42,8 +42,10 @@ interface SelectedItem {
 
 type ActiveTab = 'checkin' | 'serve';
 
-// Mock location toggle: Set to true for testing (uses first stop's coordinates)
+// Mock location toggle: Set to true for testing
 const USE_MOCK_LOCATION = false;
+// Midtown Route - St Stephen's (Truman/Paseo)
+const MOCK_COORDINATES = { lat: 39.095403, lng: -94.565694 };
 
 // Stop detection radius in meters (volunteer must be within this distance to detect a stop)
 const STOP_DETECTION_RADIUS = 200;
@@ -179,11 +181,10 @@ export default function DistributingPage() {
                 }));
                 setRouteStops(mappedStops);
 
-                // If mocking location, use the first stop's coordinates
-                if (USE_MOCK_LOCATION && mappedStops.length > 0) {
-                    const firstStop = mappedStops[0];
-                    setCurrentLocation({ lat: firstStop.latitude, lng: firstStop.longitude });
-                    console.log(`[Mock Location] Set to stop: ${firstStop.name} (${firstStop.latitude}, ${firstStop.longitude})`);
+                // If mocking location, use the mock coordinates
+                if (USE_MOCK_LOCATION) {
+                    setCurrentLocation(MOCK_COORDINATES);
+                    console.log(`[Mock Location] Set to: (${MOCK_COORDINATES.lat}, ${MOCK_COORDINATES.lng})`);
                 }
             }
         };
@@ -925,6 +926,13 @@ export default function DistributingPage() {
                                     className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-mono tracking-widest"
                                     autoComplete="off"
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setSsnLast4("0000")}
+                                    className="mt-2 w-full py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                                >
+                                    No SSN available
+                                </button>
                             </div>
                         </div>
 
