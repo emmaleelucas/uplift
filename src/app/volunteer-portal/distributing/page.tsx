@@ -43,7 +43,7 @@ interface SelectedItem {
 type ActiveTab = 'checkin' | 'serve';
 
 // Mock location toggle: Set to true for testing (uses first stop's coordinates)
-const USE_MOCK_LOCATION = true;
+const USE_MOCK_LOCATION = false;
 
 // Stop detection radius in meters (used for detecting current stop AND filtering check-ins)
 const STOP_DETECTION_RADIUS = 100;
