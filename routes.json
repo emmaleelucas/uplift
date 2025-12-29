@@ -5,74 +5,84 @@
             "stops": [
                 {
                     "number": 1,
-                    "name": "Ryerson",
+                    "name": "9th & Ryerson",
                     "location": "9th/Ryerson",
                     "state": "MO",
                     "coordinates": [
-                        39.126050,
-                        -94.579872
+                        39.125910,
+                        -94.579907
                     ]
                 },
                 {
                     "number": 2,
+                    "name": "38th & Minnesota",
+                    "location": "38th/Minnesota",
+                    "state": "KS",
+                    "coordinates": [
+                        39.115117,
+                        -94.672541
+                    ]
+                },
+                {
+                    "number": 3,
                     "name": "Old Price Chopper",
                     "location": "43rd/State Ave",
                     "state": "KS",
                     "notes": "SW corner parking lot",
                     "coordinates": [
-                        39.116567,
-                        -94.679126
-                    ]
-                },
-                {
-                    "number": 3,
-                    "name": "Kansas Ave",
-                    "location": "69 Hwy/18th St",
-                    "state": "KS",
-                    "notes": "Under overpass",
-                    "coordinates": [
-                        39.087637,
-                        -94.647397
+                        39.115032,
+                        -94.680444
                     ]
                 },
                 {
                     "number": 4,
-                    "name": "Shawnee Park",
-                    "location": "Approx 710 S. Packard",
+                    "name": "Kansas Ave",
+                    "location": "Kansas Ave & 18th St Expwy",
                     "state": "KS",
+                    "notes": "Under overpass",
                     "coordinates": [
-                        39.085813,
-                        -94.624949
+                        39.087334,
+                        -94.649095
                     ]
                 },
                 {
                     "number": 5,
-                    "name": "Bike Bridge",
-                    "location": "3rd/Armstrong",
+                    "name": "710 S Packard",
+                    "location": "Approx 710 S. Packard",
                     "state": "KS",
                     "coordinates": [
-                        39.114378,
-                        -94.617261
+                        39.085603,
+                        -94.624863
                     ]
                 },
                 {
                     "number": 6,
-                    "name": "West Bottoms",
-                    "location": "I-670/Genesse St",
-                    "state": "MO",
+                    "name": "Bike Bridge",
+                    "location": "3rd/Armstrong",
+                    "state": "KS",
                     "coordinates": [
-                        39.098394,
-                        -94.604637
+                        39.114576,
+                        -94.616977
                     ]
                 },
                 {
                     "number": 7,
-                    "name": "Chavez",
+                    "name": "670 & Genesee",
+                    "location": "I-670/Genesse St",
+                    "state": "MO",
+                    "coordinates": [
+                        39.097924,
+                        -94.603895
+                    ]
+                },
+                {
+                    "number": 8,
+                    "name": "Chavez Blvd",
                     "location": "Avenida Chavez & Allen Rd",
                     "state": "MO",
                     "coordinates": [
-                        39.086100,
-                        -94.602893
+                        39.086303,
+                        -94.602883
                     ]
                 }
             ]
@@ -82,32 +92,34 @@
             "stops": [
                 {
                     "number": 1,
-                    "name": "18th/Troost",
+                    "name": "18th St & 71 Hwy",
+                    "location": "18th/Troost",
                     "state": "MO",
                     "notes": "Under highway",
                     "coordinates": [
-                        39.091513,
-                        -94.570102
+                        39.091498,
+                        -94.571470
                     ]
                 },
                 {
                     "number": 2,
-                    "name": "I-35/Pennway",
+                    "name": "Pennway",
+                    "location": "I-35/Pennway",
                     "state": "MO",
                     "notes": "Across from Fire Station",
                     "coordinates": [
-                        39.087927,
-                        -94.591531
+                        39.087479,
+                        -94.591669
                     ]
                 },
                 {
                     "number": 3,
-                    "name": "6th/Broadway",
+                    "name": "6th & Broadway",
                     "state": "MO",
                     "notes": "SE corner",
                     "coordinates": [
-                        39.106379,
-                        -94.587874
+                        39.106472,
+                        -94.587860
                     ]
                 },
                 {
@@ -116,19 +128,19 @@
                     "state": "MO",
                     "location": "Independence/Grand",
                     "coordinates": [
-                        39.107254,
-                        -94.580243
+                        39.107402,
+                        -94.580535
                     ]
                 },
                 {
                     "number": 5,
                     "name": "Guinotte",
-                    "location": "Under 9 Hwy",
+                    "location": "Under HOA bridge",
                     "state": "MO",
                     "notes": "Heart of America Bridge",
                     "coordinates": [
-                        39.112568,
-                        -94.577654
+                        39.112681,
+                        -94.577871
                     ]
                 },
                 {
@@ -137,18 +149,18 @@
                     "location": "East of 1st/Campbell",
                     "state": "MO",
                     "coordinates": [
-                        39.113417,
-                        -94.573819
+                        39.113707,
+                        -94.572488
                     ]
                 },
                 {
                     "number": 7,
-                    "name": "14th/Benton",
+                    "name": "14th & Benton",
                     "location": "Truman/Benton",
                     "state": "MO",
                     "coordinates": [
-                        39.097196,
-                        -94.575472
+                        39.0946488,
+                        -94.5447078
                     ]
                 }
             ]
@@ -158,54 +170,54 @@
             "stops": [
                 {
                     "number": 1,
-                    "name": "St Stephen's",
+                    "name": "St Stephens",
                     "location": "Truman/Paseo",
                     "state": "MO",
                     "coordinates": [
-                        39.095403,
-                        -94.565694
+                        39.095412,
+                        -94.565530
                     ]
                 },
                 {
                     "number": 2,
-                    "name": "Rockhill/Volker",
+                    "name": "Rockhill & Voelker",
                     "location": "58th/Rockhill",
                     "state": "MO",
                     "coordinates": [
-                        39.021930,
-                        -94.576556
+                        39.039341,
+                        -94.578715
                     ]
                 },
                 {
                     "number": 3,
-                    "name": "45th/Garfield",
+                    "name": "45th & Garfield",
                     "location": "North of Cleaver",
                     "state": "MO",
                     "notes": "East of Garfield",
                     "coordinates": [
-                        39.043671,
-                        -94.559557
+                        39.044284,
+                        -94.559853
                     ]
                 },
                 {
                     "number": 4,
-                    "name": "Pick N Pull",
+                    "name": "Pick & Pull",
                     "location": "8012 E Truman",
                     "state": "MO",
                     "coordinates": [
-                        39.093495,
-                        -94.489790
+                        39.093717,
+                        -94.489178
                     ]
                 },
                 {
                     "number": 5,
-                    "name": "Sheffield Park",
+                    "name": "Sheffield",
                     "location": "~1100 Winchester",
                     "state": "MO",
                     "notes": "Near ballfield",
                     "coordinates": [
-                        39.098015,
-                        -94.502669
+                        39.098820,
+                        -94.500855
                     ]
                 }
             ]
@@ -215,23 +227,23 @@
             "stops": [
                 {
                     "number": 1,
-                    "name": "Chestnut TFwy",
+                    "name": "Chestnut",
                     "state": "MO",
                     "notes": "Bottom of hill, N. of Cliff Dr",
                     "coordinates": [
-                        39.112710,
-                        -94.548050
+                        39.117358,
+                        -94.547954
                     ]
                 },
                 {
                     "number": 2,
-                    "name": "Quick Fuel",
+                    "name": "Quik Fuel",
                     "location": "Front St/Cambridge",
                     "state": "MO",
                     "notes": "Behind Phillips 66",
                     "coordinates": [
-                        39.129666,
-                        -94.501536
+                        39.128412,
+                        -94.500612
                     ]
                 },
                 {
@@ -241,28 +253,28 @@
                     "state": "MO",
                     "notes": "East of Flying J",
                     "coordinates": [
-                        39.130579,
-                        -94.496489
+                        39.129987,
+                        -94.494314
                     ]
                 },
                 {
                     "number": 4,
-                    "name": "435/Independence",
+                    "name": "435 & Independence",
                     "notes": "Near Auto Parts Store to the west",
                     "state": "MO",
                     "coordinates": [
-                        39.104009,
-                        -94.485460
+                        39.106299,
+                        -94.490063
                     ]
                 },
                 {
                     "number": 5,
-                    "name": "St John/Bennington",
+                    "name": "St John & Bennington",
                     "state": "MO",
                     "notes": "East of Super Flea",
                     "coordinates": [
-                        39.111781,
-                        -94.505018
+                        39.112054,
+                        -94.505213
                     ]
                 }
             ]
