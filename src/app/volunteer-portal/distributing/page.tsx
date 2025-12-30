@@ -798,11 +798,16 @@ export default function DistributingPage() {
                 {/* New Check-In Button or Form */}
                 {!showNewCheckIn ? (
                     <button
-                        onClick={() => setShowNewCheckIn(true)}
-                        className="w-full py-4 bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl font-semibold text-lg transition-colors flex items-center justify-center gap-2"
+                        onClick={() => currentStop && setShowNewCheckIn(true)}
+                        disabled={!currentStop}
+                        className={`w-full py-4 rounded-2xl font-semibold text-lg transition-colors flex items-center justify-center gap-2 ${
+                            currentStop
+                                ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                                : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                        }`}
                     >
                         <UserPlus className="w-5 h-5" />
-                        Check In New Person
+                        {currentStop ? 'Check In New Person' : 'Select a Stop First'}
                     </button>
                 ) : (
                     /* Check-in Form */
