@@ -79,48 +79,41 @@ const categoryData = [
   { name: 'Clothing', description: 'Apparel items including shirts, pants, jackets, footwear, and undergarments' },
   { name: 'Basic Needs', description: 'Essential supplies for outdoor survival and comfort' },
   { name: 'Hygiene Items', description: 'Travel-sized personal care and hygiene products' },
-  { name: 'Canned Goods', description: 'Non-perishable canned food items - pop-top preferred, no glass, no expired food' },
 ];
 
-// Clothing sizes - using enum values
-const standardSizes: readonly string[] = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
-const shoeSizes: readonly string[] = ['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '13.5', '14'];
-const oneSize: readonly string[] = ['one_size'];
-
-// Gender options
-const allGenders: readonly ('male' | 'female' | 'none')[] = ['male', 'female', 'none'];
-const unisexOnly: readonly ('male' | 'female' | 'none')[] = ['none'];
-
-const itemTypeData: { [key: string]: { name: string; sizes?: readonly string[]; genders?: readonly ('male' | 'female' | 'none')[] }[] } = {
+// Simplified item data - no gender/size variations
+const itemTypeData: { [key: string]: { name: string }[] } = {
   'Clothing': [
-    // Shirts - all genders
-    { name: 'T-Shirt', sizes: standardSizes, genders: allGenders },
-    { name: 'Long Sleeve Shirt', sizes: standardSizes, genders: allGenders },
-    // Pants - all genders  
-    { name: 'Jeans', sizes: standardSizes, genders: allGenders },
-    { name: 'Pants', sizes: standardSizes, genders: allGenders },
-    { name: 'Sweat Pants', sizes: standardSizes, genders: allGenders },
-    { name: 'Shorts', sizes: standardSizes, genders: allGenders },
-    // Headwear - unisex only
-    { name: 'Baseball Cap', sizes: oneSize, genders: unisexOnly },
-    { name: 'Beanie', sizes: oneSize, genders: unisexOnly },
+    // Shirts
+    { name: 'T-Shirt' },
+    { name: 'Long Sleeve Shirt' },
+    // Pants
+    { name: 'Jeans' },
+    { name: 'Pants' },
+    { name: 'Sweat Pants' },
+    { name: 'Shorts' },
+    // Headwear
+    { name: 'Baseball Cap' },
+    { name: 'Beanie' },
     // Footwear
-    { name: 'Socks', sizes: standardSizes, genders: unisexOnly },  // unisex only
-    { name: 'Boots', sizes: shoeSizes, genders: allGenders },
-    { name: 'Sneakers', sizes: shoeSizes, genders: allGenders },
-    { name: 'Sandals', sizes: shoeSizes, genders: allGenders },
-    // Outerwear - all genders
-    { name: 'Hoodie', sizes: standardSizes, genders: allGenders },
-    { name: 'Jacket', sizes: standardSizes, genders: allGenders },
-    { name: 'Coat', sizes: standardSizes, genders: allGenders },
-    { name: 'Sweater', sizes: standardSizes, genders: allGenders },
-    // Accessories - unisex only
-    { name: 'Gloves', sizes: standardSizes, genders: unisexOnly },
-    { name: 'Scarf', sizes: oneSize, genders: unisexOnly },
-    // Undergarments - all genders
-    { name: 'Underwear', sizes: standardSizes, genders: allGenders },
+    { name: 'Socks' },
+    { name: 'Boots' },
+    { name: 'Sneakers' },
+    { name: 'Sandals' },
+    // Outerwear
+    { name: 'Hoodie' },
+    { name: 'Jacket' },
+    { name: 'Coat' },
+    { name: 'Sweater' },
+    // Accessories
+    { name: 'Gloves' },
+    { name: 'Scarf' },
+    // Undergarments
+    { name: 'Underwear' },
   ],
   'Basic Needs': [
+    // Food
+    { name: 'Canned Good' },
     // Water containers
     { name: 'Half Gallon Plastic Jug' },
     { name: 'Full Gallon Plastic Jug' },
@@ -173,18 +166,6 @@ const itemTypeData: { [key: string]: { name: string; sizes?: readonly string[]; 
     // Bug protection
     { name: 'Bug Wipes' },
     { name: 'Bug Spray' },
-  ],
-  'Canned Goods': [
-    { name: 'Canned Fruit' },
-    { name: 'Tuna' },
-    { name: 'Beef Stew' },
-    { name: 'Chili' },
-    { name: 'Pork & Beans' },
-    { name: 'Ravioli' },
-    { name: 'Spaghetti' },
-    { name: 'Spam' },
-    { name: 'Vienna Sausage' },
-    { name: 'Canned Soup' },
   ],
 };
 
@@ -336,36 +317,24 @@ async function seed() {
     // 4. SEED ITEM TYPES
     // ==========================================
     console.log('🏷️ Seeding item types...');
-    const insertedItemTypes: { id: string; name: string; categoryId: string; gender: 'male' | 'female' | 'none'; size: string | null }[] = [];
+    const insertedItemTypes: { id: string; name: string; categoryId: string }[] = [];
 
     for (const cat of insertedCategories) {
       const items = itemTypeData[cat.name] || [];
       for (const item of items) {
-        const sizes = item.sizes || [null];
-        // If genders not specified, use [null] to create one item with null gender
-        const genders = item.genders || [null];
+        const needLevel = randomElement(['low', 'mid', 'high'] as const);
+        const [insertedItem] = await db.insert(itemType).values({
+          name: item.name,
+          categoryId: cat.id,
+          needLevel,
+          notes: Math.random() > 0.8 ? 'Popular item - restock frequently' : null,
+        }).returning();
 
-        for (const size of sizes) {
-          for (const gender of genders) {
-            const needLevel = randomElement(['low', 'mid', 'high'] as const);
-            const [insertedItem] = await db.insert(itemType).values({
-              name: item.name,
-              categoryId: cat.id,
-              gender: gender, // Will be null for non-clothing items
-              size: (size || null) as typeof itemType.$inferInsert['size'],
-              needLevel,
-              notes: Math.random() > 0.8 ? 'Popular item - restock frequently' : null,
-            }).returning();
-
-            insertedItemTypes.push({
-              id: insertedItem.id,
-              name: insertedItem.name,
-              categoryId: cat.id,
-              gender: insertedItem.gender || 'none',
-              size: insertedItem.size,
-            });
-          }
-        }
+        insertedItemTypes.push({
+          id: insertedItem.id,
+          name: insertedItem.name,
+          categoryId: cat.id,
+        });
       }
     }
     console.log(`  → Created ${insertedItemTypes.length} item types\n`);

@@ -27,45 +27,6 @@ export const needLevelEnum = pgEnum("need_level", [
     "high",
 ]);
 
-export const genderEnum = pgEnum("gender", [
-    "male",
-    "female",
-    "none",
-]);
-
-// Clothing sizes
-export const clothingSizeEnum = pgEnum("clothing_size", [
-    // One size (for beanies, baseball caps)
-    "one_size",
-    // Standard abbreviations (for most clothing)
-    "XS",
-    "S",
-    "M",
-    "L",
-    "XL",
-    "2XL",
-    "3XL",
-    "4XL",
-    // Shoe sizes (men's/women's)
-    "6",
-    "6.5",
-    "7",
-    "7.5",
-    "8",
-    "8.5",
-    "9",
-    "9.5",
-    "10",
-    "10.5",
-    "11",
-    "11.5",
-    "12",
-    "12.5",
-    "13",
-    "13.5",
-    "14",
-]);
-
 /* ======================
    PEOPLE
 ====================== */
@@ -93,8 +54,6 @@ export const itemType = pgTable("item_type", {
     categoryId: uuid("category_id")
         .references(() => category.id)
         .notNull(),
-    gender: genderEnum("gender").default("none"),
-    size: clothingSizeEnum("size"),  // Uses enum for consistent sizing
     needLevel: needLevelEnum("need_level").notNull(),
     notes: text("notes"),
 });
