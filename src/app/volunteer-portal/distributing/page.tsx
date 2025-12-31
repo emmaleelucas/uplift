@@ -35,6 +35,7 @@ export default function DistributingPage() {
         detectedStop,
         stopConfirmed,
         routeStopId,
+        loadingRoutes,
         confirmStop,
         changeStop,
     } = useRouteStops({ currentLocation });
@@ -218,6 +219,7 @@ export default function DistributingPage() {
                     routeStops={routeStops}
                     detectedStop={detectedStop}
                     currentLocation={currentLocation}
+                    loading={loadingRoutes}
                     onConfirmStop={confirmStop}
                 />
             ) : (

@@ -17,6 +17,7 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
     const [detectedStop, setDetectedStop] = useState<RouteStop | null>(null);
     const [stopConfirmed, setStopConfirmed] = useState(false);
     const [routeStopId, setRouteStopId] = useState<string | null>(null);
+    const [loadingRoutes, setLoadingRoutes] = useState(true);
 
     // Reset stop selection on mount (ensures fresh state on every page visit)
     useEffect(() => {
@@ -29,6 +30,7 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
     // Fetch routes and route stops
     useEffect(() => {
         const loadRoutesAndStops = async () => {
+            setLoadingRoutes(true);
             const [routesData, stopsData] = await Promise.all([
                 fetchRoutes(),
                 fetchRouteStops()
@@ -36,6 +38,7 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
 
             setRoutes(routesData);
             setRouteStops(stopsData);
+            setLoadingRoutes(false);
         };
         loadRoutesAndStops();
     }, []);
@@ -92,6 +95,7 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
         detectedStop,
         stopConfirmed,
         routeStopId,
+        loadingRoutes,
         confirmStop,
         changeStop,
     };

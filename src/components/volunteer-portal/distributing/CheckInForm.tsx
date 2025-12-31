@@ -189,7 +189,7 @@ export function CheckInForm({
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Last Name
+                        Last Name <span className="font-normal text-slate-400">(optional)</span>
                     </label>
                     <input
                         type="text"
@@ -246,7 +246,7 @@ export function CheckInForm({
                                         : 'At another stop'}
                                     {' • '}
                                     {alreadyCheckedInPerson.mealServed ? 'Meal served' : 'No meal'}
-                                    {alreadyCheckedInPerson.mealsTakeAway > 0 && `, ${alreadyCheckedInPerson.mealsTakeAway} take away`}
+                                    {alreadyCheckedInPerson.mealsTakeAway > 0 && `, ${alreadyCheckedInPerson.mealsTakeAway} take away meal${alreadyCheckedInPerson.mealsTakeAway !== 1 ? 's' : ''}`}
                                 </p>
                             </div>
                         </div>
@@ -372,9 +372,9 @@ export function CheckInForm({
                         Check In
                         {(mealServed || takeAway > 0 || checkInItems.length > 0) && (
                             <span className="ml-2 text-sm opacity-80">
-                                ({mealServed ? 'meal' : ''}
+                                ({mealServed ? 'meal served' : ''}
                                 {mealServed && takeAway > 0 ? ', ' : ''}
-                                {takeAway > 0 ? `${takeAway} take away` : ''}
+                                {takeAway > 0 ? `${takeAway} take away meal${takeAway !== 1 ? 's' : ''}` : ''}
                                 {(mealServed || takeAway > 0) && checkInItems.length > 0 ? ', ' : ''}
                                 {checkInItems.length > 0 ? `${checkInItems.length} item${checkInItems.length !== 1 ? 's' : ''}` : ''})
                             </span>

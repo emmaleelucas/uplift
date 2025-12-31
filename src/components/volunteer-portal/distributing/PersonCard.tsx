@@ -73,7 +73,7 @@ export function PersonCard({
                         {person.mealsTakeAway > 0 && (
                             <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
                                 <Package className="w-3 h-3" />
-                                {person.mealsTakeAway} take away
+                                {person.mealsTakeAway} take away meal{person.mealsTakeAway !== 1 ? 's' : ''}
                             </span>
                         )}
                         {person.items.length > 0 && (

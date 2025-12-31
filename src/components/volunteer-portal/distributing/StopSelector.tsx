@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, ChevronLeft, ChevronRight } from "lucide-react";
+import { MapPin, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Route, RouteStop, Coordinates } from "@/types/distribution";
 import { getRouteColor } from "@/lib/constants/routes";
 
@@ -10,6 +10,7 @@ interface StopSelectorProps {
     routeStops: RouteStop[];
     detectedStop: RouteStop | null;
     currentLocation: Coordinates | null;
+    loading?: boolean;
     onConfirmStop: (stop: RouteStop) => void;
 }
 
@@ -18,6 +19,7 @@ export function StopSelector({
     routeStops,
     detectedStop,
     currentLocation,
+    loading = false,
     onConfirmStop,
 }: StopSelectorProps) {
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -84,7 +86,12 @@ export function StopSelector({
                         </p>
                     )}
 
-                    {!selectedRouteId ? (
+                    {loading ? (
+                        /* Loading State */
+                        <div className="flex items-center justify-center py-8">
+                            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                        </div>
+                    ) : !selectedRouteId ? (
                         /* Step 1: Select Route */
                         <div className="space-y-2">
                             {routes.map(route => {
