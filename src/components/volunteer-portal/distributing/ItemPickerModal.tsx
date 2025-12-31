@@ -180,7 +180,7 @@ export function ItemPickerModal({
                 <div className="p-4 border-t border-slate-200 dark:border-slate-700">
                     <button
                         onClick={handleConfirm}
-                        className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold"
+                        className="w-full py-3 bg-slate-600 hover:bg-slate-700 text-white rounded-xl font-semibold"
                     >
                         {tempItems.length > 0
                             ? `Done (${tempItems.length} item${tempItems.length !== 1 ? 's' : ''})`

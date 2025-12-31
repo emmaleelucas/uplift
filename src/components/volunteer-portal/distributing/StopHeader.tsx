@@ -13,7 +13,7 @@ export function StopHeader({ currentStop, onChangeStop }: StopHeaderProps) {
 
     return (
         <div className="max-w-2xl mx-auto px-4 pt-6">
-            <div className={`bg-gradient-to-r ${routeColor.gradient} text-white rounded-xl px-4 py-3`}>
+            <div className={`bg-gradient-to-r ${routeColor.gradient} text-white rounded-xl px-4 py-3 border-2 border-white/20`}>
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-sm text-white/70">{currentStop.routeName}</p>

@@ -9,28 +9,28 @@ export interface RouteColorConfig {
 
 export const ROUTE_COLORS: Record<string, RouteColorConfig> = {
     'West Route': {
-        bg: 'bg-blue-500',
-        gradient: 'from-blue-500 to-blue-600',
-        light: 'bg-blue-100 dark:bg-blue-900/30',
-        text: 'text-blue-500',
+        bg: 'bg-green-500',
+        gradient: 'from-green-500 to-green-600',
+        light: 'bg-green-100 dark:bg-green-900/30',
+        text: 'text-green-500',
     },
     'Central Route': {
-        bg: 'bg-indigo-500',
-        gradient: 'from-indigo-500 to-indigo-600',
-        light: 'bg-indigo-100 dark:bg-indigo-900/30',
-        text: 'text-indigo-500',
+        bg: 'bg-red-500',
+        gradient: 'from-red-500 to-red-600',
+        light: 'bg-red-100 dark:bg-red-900/30',
+        text: 'text-red-500',
     },
     'Midtown Route': {
+        bg: 'bg-purple-500',
+        gradient: 'from-purple-500 to-purple-600',
+        light: 'bg-purple-100 dark:bg-purple-900/30',
+        text: 'text-purple-500',
+    },
+    'East Route': {
         bg: 'bg-teal-500',
         gradient: 'from-teal-500 to-teal-600',
         light: 'bg-teal-100 dark:bg-teal-900/30',
         text: 'text-teal-500',
-    },
-    'East Route': {
-        bg: 'bg-emerald-500',
-        gradient: 'from-emerald-500 to-emerald-600',
-        light: 'bg-emerald-100 dark:bg-emerald-900/30',
-        text: 'text-emerald-500',
     },
 };
 

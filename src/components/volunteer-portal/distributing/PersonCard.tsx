@@ -65,7 +65,7 @@ export function PersonCard({
                     </div>
                     <div className="flex items-center gap-3 text-sm text-slate-500">
                         {person.mealServed && (
-                            <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
                                 <Utensils className="w-3 h-3" />
                                 Meal
                             </span>
@@ -104,7 +104,7 @@ export function PersonCard({
                             <button
                                 onClick={onToggleMealServed}
                                 className={`w-14 h-8 rounded-full transition-colors relative ${
-                                    person.mealServed ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'
+                                    person.mealServed ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
                                 }`}
                             >
                                 <div className={`w-6 h-6 rounded-full bg-white shadow-md absolute top-1 transition-transform ${
@@ -184,7 +184,7 @@ export function PersonCard({
                     {/* Delete Button */}
                     <button
                         onClick={onDelete}
-                        className="w-full py-3 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-400 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
                     >
                         <Trash2 className="w-5 h-5" />
                         Remove Check-In

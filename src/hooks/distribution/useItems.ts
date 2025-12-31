@@ -51,16 +51,16 @@ export function useItems() {
     const getCategoryIcon = (categoryName: string): CategoryIconConfig => {
         const name = categoryName.toLowerCase();
         if (name.includes('clothing') || name.includes('clothes')) {
-            return { icon: Shirt, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900/30' };
+            return { icon: Shirt, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-700' };
         }
         if (name.includes('hygiene') || name.includes('toiletries')) {
-            return { icon: Sparkles, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900/30' };
+            return { icon: Sparkles, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-700' };
         }
         if (name.includes('food') || name.includes('meal')) {
-            return { icon: Apple, color: 'text-green-500', bg: 'bg-green-100 dark:bg-green-900/30' };
+            return { icon: Apple, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-700' };
         }
         if (name.includes('blanket') || name.includes('bedding') || name.includes('sleeping')) {
-            return { icon: Bed, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900/30' };
+            return { icon: Bed, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-700' };
         }
         return { icon: Package, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-700' };
     };

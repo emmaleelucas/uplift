@@ -265,7 +265,7 @@ export function CheckInForm({
                         onClick={() => setMealServed(!mealServed)}
                         disabled={!firstName.trim()}
                         className={`w-14 h-8 rounded-full transition-colors relative disabled:opacity-50 disabled:cursor-not-allowed ${
-                            mealServed ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'
+                            mealServed ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
                         }`}
                     >
                         <div className={`w-6 h-6 rounded-full bg-white shadow-md absolute top-1 transition-transform ${
@@ -360,7 +360,7 @@ export function CheckInForm({
                 disabled={!firstName.trim() || checkingIn}
                 className={`w-full py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-2 transition-all ${
                     firstName.trim() && !checkingIn
-                        ? 'bg-green-500 hover:bg-green-600 text-white'
+                        ? 'bg-slate-600 hover:bg-slate-700 text-white'
                         : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
                 }`}
             >
