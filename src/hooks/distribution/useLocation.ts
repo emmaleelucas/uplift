@@ -2,17 +2,28 @@
 
 import { useState, useEffect } from "react";
 import { Coordinates } from "@/types/distribution";
-import { USE_MOCK_LOCATION, MOCK_COORDINATES } from "@/lib/constants/routes";
+import { USE_MOCK_LOCATION, MOCK_LOCATION_SEQUENCE } from "@/lib/constants/routes";
 
 export function useLocation() {
     const [currentLocation, setCurrentLocation] = useState<Coordinates | null>(null);
 
     useEffect(() => {
-        // If mocking, set mock coordinates immediately
+        // If mocking, simulate location sequence with delays
         if (USE_MOCK_LOCATION) {
-            setCurrentLocation(MOCK_COORDINATES);
-            console.log(`[Mock Location] Set to: (${MOCK_COORDINATES.lat}, ${MOCK_COORDINATES.lng})`);
-            return;
+            const timeouts: NodeJS.Timeout[] = [];
+
+            MOCK_LOCATION_SEQUENCE.forEach((loc, index) => {
+                const timeout = setTimeout(() => {
+                    setCurrentLocation({ lat: loc.lat, lng: loc.lng });
+                    console.log(`[Mock Location ${index + 1}/${MOCK_LOCATION_SEQUENCE.length}] Set to: (${loc.lat}, ${loc.lng})`);
+                }, loc.delay);
+                timeouts.push(timeout);
+            });
+
+            // Cleanup timeouts on unmount
+            return () => {
+                timeouts.forEach(t => clearTimeout(t));
+            };
         }
 
         if (!navigator.geolocation) return;

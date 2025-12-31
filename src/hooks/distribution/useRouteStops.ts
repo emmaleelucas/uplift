@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Route, RouteStop, Coordinates } from "@/types/distribution";
 import { STOP_DETECTION_RADIUS } from "@/lib/constants/routes";
 import { getDistanceInMeters } from "./useLocation";
 import { fetchRoutes, fetchRouteStops } from "@/db/actions";
+
 
 interface UseRouteStopsProps {
     currentLocation: Coordinates | null;
@@ -18,6 +19,18 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
     const [stopConfirmed, setStopConfirmed] = useState(false);
     const [routeStopId, setRouteStopId] = useState<string | null>(null);
     const [loadingRoutes, setLoadingRoutes] = useState(true);
+
+    // Refs to access current values without adding to dependency array
+    const stopConfirmedRef = useRef(stopConfirmed);
+    const currentStopRef = useRef(currentStop);
+    const routeStopsRef = useRef(routeStops);
+
+    // Keep refs in sync
+    useEffect(() => {
+        stopConfirmedRef.current = stopConfirmed;
+        currentStopRef.current = currentStop;
+        routeStopsRef.current = routeStops;
+    }, [stopConfirmed, currentStop, routeStops]);
 
     // Reset stop selection on mount (ensures fresh state on every page visit)
     useEffect(() => {
@@ -43,13 +56,12 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
         loadRoutesAndStops();
     }, []);
 
-    // Detect current stop based on location
+    // Detect current stop based on location (always runs, even when confirmed)
+    // Re-runs when location changes OR when routes finish loading
     useEffect(() => {
-        // If stop is already confirmed, don't change detection
-        if (stopConfirmed) return;
+        const stops = routeStopsRef.current;
 
-        // Otherwise try GPS detection
-        if (!currentLocation || routeStops.length === 0) {
+        if (!currentLocation || stops.length === 0) {
             setDetectedStop(null);
             return;
         }
@@ -58,7 +70,7 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
         let nearestStop: RouteStop | null = null;
         let nearestDistance = Infinity;
 
-        for (const stop of routeStops) {
+        for (const stop of stops) {
             const distance = getDistanceInMeters(
                 currentLocation.lat,
                 currentLocation.lng,
@@ -72,7 +84,7 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
         }
 
         setDetectedStop(nearestStop);
-    }, [currentLocation, routeStops, stopConfirmed]);
+    }, [currentLocation, loadingRoutes]);
 
     // Confirm the detected or selected stop
     const confirmStop = (stop: RouteStop) => {

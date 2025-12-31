@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-    Clock, Loader2, UserPlus, MapPin, Check
+    Loader2, UserPlus, MapPin, Check
 } from "lucide-react";
 import { CheckedInPerson, SelectedItem } from "@/types/distribution";
-import { useLocation } from "@/hooks/distribution/useLocation";
-import { useRouteStops } from "@/hooks/distribution/useRouteStops";
+import { useDistribution } from "@/contexts/DistributionContext";
 import { useItems } from "@/hooks/distribution/useItems";
 import {
     fetchCheckedInPeopleAtStop,
@@ -18,17 +17,19 @@ import {
 } from "@/db/actions";
 import {
     StopHeader,
+    InTransitHeader,
     StopSelector,
     CheckInForm,
     PersonCard,
     ItemPickerModal,
     DeleteConfirmModal,
+    NewStopDetectedModal,
 } from "@/components/volunteer-portal/distributing";
 
 export default function DistributingPage() {
-    // Location and stop management
-    const { currentLocation } = useLocation();
+    // Distribution context for location and stop management
     const {
+        currentLocation,
         routes,
         routeStops,
         currentStop,
@@ -36,9 +37,12 @@ export default function DistributingPage() {
         stopConfirmed,
         routeStopId,
         loadingRoutes,
+        newStopDetected,
+        inTransit,
         confirmStop,
         changeStop,
-    } = useRouteStops({ currentLocation });
+        dismissNewStop,
+    } = useDistribution();
 
     // Items management
     const {
@@ -71,6 +75,22 @@ export default function DistributingPage() {
     // Delete confirmation
     const [personToDelete, setPersonToDelete] = useState<CheckedInPerson | null>(null);
     const [deleting, setDeleting] = useState(false);
+
+    // Calculate next stop based on current stop
+    const nextStop = useMemo(() => {
+        if (!currentStop) return null;
+
+        const sameRouteStops = routeStops
+            .filter(s => s.routeId === currentStop.routeId)
+            .sort((a, b) => a.stopNumber - b.stopNumber);
+
+        const currentIndex = sameRouteStops.findIndex(s => s.id === currentStop.id);
+        if (currentIndex === -1 || currentIndex === sameRouteStops.length - 1) {
+            return null;
+        }
+
+        return sameRouteStops[currentIndex + 1];
+    }, [currentStop, routeStops]);
 
     // Reveal SSN temporarily
     const revealSsn = (personId: string) => {
@@ -210,9 +230,16 @@ export default function DistributingPage() {
         setTimeout(() => setCheckInSuccess(false), 2000);
     };
 
+    // Handle confirming new detected stop
+    const handleConfirmNewStop = () => {
+        if (newStopDetected) {
+            confirmStop(newStopDetected);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-            {/* Stop Confirmation Section */}
+            {/* Stop Selection Section */}
             {!stopConfirmed ? (
                 <StopSelector
                     routes={routes}
@@ -224,12 +251,21 @@ export default function DistributingPage() {
                 />
             ) : (
                 <>
-                    {/* Confirmed Stop Header */}
+                    {/* Stop Header or In Transit Header */}
                     {currentStop && (
-                        <StopHeader
-                            currentStop={currentStop}
-                            onChangeStop={changeStop}
-                        />
+                        inTransit ? (
+                            <InTransitHeader
+                                lastStop={currentStop}
+                                nextStop={nextStop}
+                                onChangeStop={changeStop}
+                            />
+                        ) : (
+                            <StopHeader
+                                currentStop={currentStop}
+                                nextStop={nextStop}
+                                onChangeStop={changeStop}
+                            />
+                        )
                     )}
 
                     <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
@@ -250,20 +286,20 @@ export default function DistributingPage() {
                         {!showNewCheckIn ? (
                             <button
                                 onClick={() => {
-                                    if (currentStop) {
+                                    if (!inTransit) {
                                         setSelectedPerson(null);
                                         setShowNewCheckIn(true);
                                     }
                                 }}
-                                disabled={!currentStop}
+                                disabled={inTransit}
                                 className={`w-full py-4 rounded-2xl font-semibold text-lg transition-colors flex items-center justify-center gap-2 ${
-                                    currentStop
-                                        ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                                        : 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                                    inTransit
+                                        ? 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                                        : 'bg-yellow-500 hover:bg-yellow-600 text-white'
                                 }`}
                             >
                                 <UserPlus className="w-5 h-5" />
-                                {currentStop ? 'Check In New Person' : 'Select a Stop First'}
+                                {inTransit ? 'Check-Ins Paused While In Transit' : 'Check In New Person'}
                             </button>
                         ) : (
                             <CheckInForm
@@ -283,17 +319,8 @@ export default function DistributingPage() {
 
                         {/* List Header */}
                         <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                            {currentStop ? (
-                                <>
-                                    <MapPin className="w-4 h-4" />
-                                    <span>Checked in at this stop ({checkedInPeople.length})</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Clock className="w-4 h-4" />
-                                    <span>Today&apos;s check-ins ({checkedInPeople.length})</span>
-                                </>
-                            )}
+                            <MapPin className="w-4 h-4" />
+                            <span>Checked in at this stop ({checkedInPeople.length})</span>
                         </div>
 
                         {/* Checked-in People List */}
@@ -303,21 +330,10 @@ export default function DistributingPage() {
                             </div>
                         ) : checkedInPeople.length === 0 ? (
                             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
-                                {currentStop ? (
-                                    <>
-                                        <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                                        <p className="text-slate-600 dark:text-slate-400">
-                                            No one checked in at this stop yet
-                                        </p>
-                                    </>
-                                ) : (
-                                    <>
-                                        <UserPlus className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                                        <p className="text-slate-600 dark:text-slate-400">
-                                            Move to a stop to see check-ins
-                                        </p>
-                                    </>
-                                )}
+                                <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                                <p className="text-slate-600 dark:text-slate-400">
+                                    No one checked in at this stop yet
+                                </p>
                             </div>
                         ) : (
                             checkedInPeople.map((person) => (
@@ -396,6 +412,17 @@ export default function DistributingPage() {
                         onConfirm={confirmDeleteCheckIn}
                         onCancel={() => setPersonToDelete(null)}
                     />
+
+                    {/* New Stop Detected Modal - Blocks UI until user responds */}
+                    {newStopDetected && currentStop && (
+                        <NewStopDetectedModal
+                            newStop={newStopDetected}
+                            currentStop={currentStop}
+                            onConfirm={handleConfirmNewStop}
+                            onStayAtCurrent={dismissNewStop}
+                            onSelectDifferent={changeStop}
+                        />
+                    )}
                 </>
             )}
         </div>
