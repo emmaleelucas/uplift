@@ -5,12 +5,8 @@ import {
   route,
   routeStop,
   homelessPerson,
-  category,
+  itemCategory,
   itemType,
-  warehouseInventory,
-  van,
-  driver,
-  routeRun,
   distribution,
   distributionItem,
 } from './db/schema';
@@ -28,18 +24,6 @@ export const db = drizzle(pool);
 
 function randomElement<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function randomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function randomDate(start: Date, end: Date): Date {
-  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
-}
-
-function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
 }
 
 // ============================================
@@ -67,103 +51,73 @@ const lastNames = [
   'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson',
 ];
 
-const vanNames = [
-  'Hope Mobile', 'Mercy Van', 'Helping Hands', 'Community Care', 'Street Angels',
-];
-
-const licensePlates = [
-  'KC-1234', 'MO-5678', 'KS-9012', 'UPLIFT1', 'HOPE-KC',
-];
-
 const categoryData = [
   { name: 'Clothing', description: 'Apparel items including shirts, pants, jackets, footwear, and undergarments' },
   { name: 'Basic Needs', description: 'Essential supplies for outdoor survival and comfort' },
   { name: 'Hygiene Items', description: 'Travel-sized personal care and hygiene products' },
 ];
 
-// Simplified item data - no gender/size variations
 const itemTypeData: { [key: string]: { name: string }[] } = {
   'Clothing': [
-    // Shirts
     { name: 'T-Shirt' },
     { name: 'Long Sleeve Shirt' },
-    // Pants
     { name: 'Jeans' },
     { name: 'Pants' },
     { name: 'Sweat Pants' },
     { name: 'Shorts' },
-    // Headwear
     { name: 'Baseball Cap' },
     { name: 'Beanie' },
-    // Footwear
     { name: 'Socks' },
     { name: 'Boots' },
     { name: 'Sneakers' },
     { name: 'Sandals' },
-    // Outerwear
     { name: 'Hoodie' },
     { name: 'Jacket' },
     { name: 'Coat' },
     { name: 'Sweater' },
-    // Accessories
     { name: 'Gloves' },
     { name: 'Scarf' },
-    // Undergarments
     { name: 'Underwear' },
   ],
   'Basic Needs': [
-    // Food
     { name: 'Canned Good' },
-    // Water containers
     { name: 'Half Gallon Plastic Jug' },
     { name: 'Full Gallon Plastic Jug' },
     { name: '1-Liter Plastic Bottle' },
     { name: '2-Liter Plastic Bottle' },
-    // Entertainment & Vision
     { name: 'Playing Cards' },
     { name: 'Reading Glasses' },
-    // Fire & Light
     { name: 'Matches' },
     { name: 'Lighter' },
     { name: 'Candles' },
     { name: 'Flashlight' },
     { name: 'Headlamp' },
-    // Batteries
     { name: 'AAA Batteries' },
     { name: 'AA Batteries' },
-    // Bags
     { name: 'Backpack' },
     { name: 'Duffel Bag' },
     { name: 'Wheeled Bag' },
-    // Bedding & Shelter
     { name: 'Blanket' },
     { name: 'Sleeping Bag' },
     { name: 'Plastic Tarp' },
     { name: 'Tent' },
     { name: 'Bed Pillow' },
-    // Warmth
     { name: 'Hand Warmers' },
   ],
   'Hygiene Items': [
-    // Hair care
     { name: 'Shampoo' },
     { name: 'Conditioner' },
-    // Bathroom essentials
     { name: 'Toilet Paper' },
     { name: 'Toothbrush' },
     { name: 'Toothpaste' },
-    // Personal care
     { name: 'Deodorant' },
     { name: 'Razors' },
     { name: 'Bar Soap' },
     { name: 'Body Wash' },
-    // Health
     { name: 'Cough Syrup' },
     { name: 'Cough Drops' },
-    // Cleaning
     { name: 'Wet Wipes' },
     { name: 'Lotion' },
-    // Bug protection
     { name: 'Bug Wipes' },
     { name: 'Bug Spray' },
   ],
@@ -196,7 +150,7 @@ interface RoutesJSON {
 // ============================================
 
 async function seed() {
-  console.log('🌱 Starting comprehensive database seed...\n');
+  console.log('🌱 Starting database seed...\n');
 
   try {
     // ==========================================
@@ -211,32 +165,20 @@ async function seed() {
     await db.delete(distribution);
     console.log('  ✓ Cleared distributions');
 
-    await db.delete(routeRun);
-    console.log('  ✓ Cleared route runs');
-
     await db.delete(routeStop);
     console.log('  ✓ Cleared route stops');
 
     await db.delete(route);
     console.log('  ✓ Cleared routes');
 
-    await db.delete(warehouseInventory);
-    console.log('  ✓ Cleared warehouse inventory');
-
     await db.delete(itemType);
     console.log('  ✓ Cleared item types');
 
-    await db.delete(category);
-    console.log('  ✓ Cleared categories');
+    await db.delete(itemCategory);
+    console.log('  ✓ Cleared item categories');
 
     await db.delete(homelessPerson);
     console.log('  ✓ Cleared homeless persons');
-
-    await db.delete(driver);
-    console.log('  ✓ Cleared drivers');
-
-    await db.delete(van);
-    console.log('  ✓ Cleared vans');
 
     console.log('  → All tables cleared!\n');
 
@@ -278,32 +220,39 @@ async function seed() {
     // 2. SEED HOMELESS PERSONS
     // ==========================================
     console.log('👥 Seeding homeless persons...');
-    const insertedPersons: { id: string; firstName: string }[] = [];
+    const insertedPersons: { id: string; firstName: string; lastName: string | null }[] = [];
 
-    // Create 60 homeless persons
-    for (let i = 0; i < 60; i++) {
+    // Create 30 homeless persons (fewer for simpler seed)
+    for (let i = 0; i < 30; i++) {
       const isMale = Math.random() > 0.5;
       const firstName = isMale
         ? randomElement(maleFirstNames)
         : randomElement(femaleFirstNames);
+      // 70% have last name, 30% don't
+      const lastName = Math.random() > 0.3 ? randomElement(lastNames) : null;
+      const ssnLast4Hash = Math.random() > 0.7 ? `hash_${Math.floor(1000 + Math.random() * 9000)}` : null;
+      // Person is identifiable if they have last name or SSN
+      const isIdentifiable = !!(lastName || ssnLast4Hash);
 
       const [person] = await db.insert(homelessPerson).values({
         firstName,
-        ssnLast4Hash: Math.random() > 0.7 ? `hash_${randomInt(1000, 9999)}` : null,
+        lastName,
+        ssnLast4Hash,
+        isIdentifiable,
       }).returning();
 
-      insertedPersons.push({ id: person.id, firstName: person.firstName });
+      insertedPersons.push({ id: person.id, firstName: person.firstName, lastName: person.lastName });
     }
     console.log(`  → Created ${insertedPersons.length} homeless persons\n`);
 
     // ==========================================
-    // 3. SEED CATEGORIES
+    // 3. SEED ITEM CATEGORIES
     // ==========================================
-    console.log('📦 Seeding categories...');
+    console.log('📦 Seeding item categories...');
     const insertedCategories: { id: string; name: string }[] = [];
 
     for (const cat of categoryData) {
-      const [insertedCat] = await db.insert(category).values({
+      const [insertedCat] = await db.insert(itemCategory).values({
         name: cat.name,
         description: cat.description,
       }).returning();
@@ -317,222 +266,24 @@ async function seed() {
     // 4. SEED ITEM TYPES
     // ==========================================
     console.log('🏷️ Seeding item types...');
-    const insertedItemTypes: { id: string; name: string; categoryId: string }[] = [];
+    const insertedItemTypes: { id: string; name: string; itemCategoryId: string }[] = [];
 
     for (const cat of insertedCategories) {
       const items = itemTypeData[cat.name] || [];
       for (const item of items) {
-        const needLevel = randomElement(['low', 'mid', 'high'] as const);
         const [insertedItem] = await db.insert(itemType).values({
           name: item.name,
-          categoryId: cat.id,
-          needLevel,
-          notes: Math.random() > 0.8 ? 'Popular item - restock frequently' : null,
+          itemCategoryId: cat.id,
         }).returning();
 
         insertedItemTypes.push({
           id: insertedItem.id,
           name: insertedItem.name,
-          categoryId: cat.id,
+          itemCategoryId: cat.id,
         });
       }
     }
     console.log(`  → Created ${insertedItemTypes.length} item types\n`);
-
-    // ==========================================
-    // 5. SEED WAREHOUSE INVENTORY
-    // ==========================================
-    console.log('🏭 Seeding warehouse inventory...');
-    let inventoryCount = 0;
-
-    for (const item of insertedItemTypes) {
-      const inventoryLevel = randomElement(['low', 'mid', 'high'] as const);
-      await db.insert(warehouseInventory).values({
-        itemTypeId: item.id,
-        inventoryLevel,
-      });
-      inventoryCount++;
-    }
-    console.log(`  → Created ${inventoryCount} inventory records\n`);
-
-    // ==========================================
-    // 6. SEED VANS
-    // ==========================================
-    console.log('🚐 Seeding vans...');
-    const insertedVans: { id: string; name: string }[] = [];
-
-    for (let i = 0; i < vanNames.length; i++) {
-      const [insertedVan] = await db.insert(van).values({
-        name: vanNames[i],
-        licensePlate: licensePlates[i],
-      }).returning();
-
-      insertedVans.push(insertedVan);
-      console.log(`  ✓ Van: ${vanNames[i]} (${licensePlates[i]})`);
-    }
-    console.log('');
-
-    // ==========================================
-    // 7. SEED DRIVERS
-    // ==========================================
-    console.log('🧑‍✈️ Seeding drivers...');
-    const insertedDrivers: { id: string; firstName: string; lastName: string | null }[] = [];
-
-    const driverData = [
-      { first: 'Marcus', last: 'Thompson', phone: '816-555-0101' },
-      { first: 'Sarah', last: 'Chen', phone: '816-555-0102' },
-      { first: 'David', last: 'Rodriguez', phone: '913-555-0103' },
-      { first: 'Emily', last: 'Williams', phone: '816-555-0104' },
-      { first: 'James', last: 'Brown', phone: '913-555-0105' },
-      { first: 'Maria', last: 'Garcia', phone: '816-555-0106' },
-      { first: 'Robert', last: 'Johnson', phone: '816-555-0107' },
-      { first: 'Lisa', last: 'Davis', phone: '913-555-0108' },
-    ];
-
-    for (const d of driverData) {
-      const [insertedDriver] = await db.insert(driver).values({
-        firstName: d.first,
-        lastName: d.last,
-        phone: d.phone,
-      }).returning();
-
-      insertedDrivers.push(insertedDriver);
-      console.log(`  ✓ Driver: ${d.first} ${d.last}`);
-    }
-    console.log('');
-
-    // ==========================================
-    // 8. SEED ROUTE RUNS
-    // ==========================================
-    console.log('🗓️ Seeding route runs...');
-    const insertedRouteRuns: { id: string; routeId: string; runDate: string }[] = [];
-
-    // Specific distribution dates for the past 2 weeks (Mon, Wed, Sat schedule)
-    const distributionDates = [
-      '2025-12-15', // Monday
-      '2025-12-17', // Wednesday
-      '2025-12-20', // Saturday
-      '2025-12-22', // Monday
-      '2025-12-24', // Wednesday (Christmas Eve)
-      '2025-12-27', // Saturday
-    ];
-
-    // Create route runs for all 4 routes on each distribution date
-    for (const runDateStr of distributionDates) {
-      console.log(`  📅 Creating runs for ${runDateStr}...`);
-
-      for (const selectedRoute of insertedRoutes) {
-        const selectedDriver = randomElement(insertedDrivers);
-        const selectedVan = randomElement(insertedVans);
-
-        const notes = Math.random() > 0.7
-          ? randomElement([
-            'Good weather, high turnout',
-            'Rain - distributed rain ponchos',
-            'Cold day - many requests for blankets',
-            'Distributed winter supplies',
-            'New faces at several stops',
-            'Busy route - ran low on socks',
-          ])
-          : null;
-
-        const [insertedRun] = await db.insert(routeRun).values({
-          routeId: selectedRoute.id,
-          runDate: runDateStr,
-          driverId: selectedDriver.id,
-          vanId: selectedVan.id,
-          notes,
-        }).returning();
-
-        insertedRouteRuns.push({
-          id: insertedRun.id,
-          routeId: selectedRoute.id,
-          runDate: runDateStr,
-        });
-
-        console.log(`    ✓ ${selectedRoute.name}`);
-      }
-    }
-    console.log(`  → Created ${insertedRouteRuns.length} route runs\n`);
-
-    // ==========================================
-    // 9. SEED DISTRIBUTIONS
-    // ==========================================
-    console.log('📋 Seeding distributions...');
-    let distributionCount = 0;
-    let distributionItemCount = 0;
-
-    // For each route run, create distributions at each stop
-    for (const run of insertedRouteRuns) {
-      // Get stops for this route
-      const routeStops = insertedStops.filter(s => s.routeId === run.routeId);
-
-      // Determine start time based on day of week (Sat = 5pm, Mon/Wed = 6pm)
-      const runDate = new Date(run.runDate + 'T00:00:00');
-      const dayOfWeek = runDate.getDay();
-      const startHour = dayOfWeek === 6 ? 17 : 18; // 5pm for Saturday, 6pm otherwise
-
-      // For each stop on the route
-      for (let stopIndex = 0; stopIndex < routeStops.length; stopIndex++) {
-        const currentStop = routeStops[stopIndex];
-
-        // Create 3-12 distributions per stop (varies by stop)
-        const numPeopleAtStop = randomInt(3, 12);
-
-        // Calculate time at this stop (roughly 15-20 minutes per stop)
-        const minutesIntoRoute = stopIndex * randomInt(15, 20);
-        const stopTime = new Date(run.runDate + 'T00:00:00');
-        stopTime.setHours(startHour, minutesIntoRoute, 0, 0);
-
-        for (let i = 0; i < numPeopleAtStop; i++) {
-          const selectedPerson = randomElement(insertedPersons);
-          const mealServed = Math.random() > 0.3 ? randomInt(1, 2) : 0; // 70% get meals, some get 2
-
-          // Add a few minutes variation for each person at the stop
-          const personTime = new Date(stopTime);
-          personTime.setMinutes(personTime.getMinutes() + randomInt(0, 10));
-
-          // Create the distribution record with proper timestamp
-          const [insertedDistribution] = await db.insert(distribution).values({
-            routeRunId: run.id,
-            routeStopId: currentStop.id,
-            homelessPersonId: selectedPerson.id,
-            mealServed,
-            distributedAt: personTime,
-            createdAt: personTime,
-          }).returning();
-
-          // Give each person 1-4 items
-          const numItems = randomInt(1, 4);
-          const givenItems = new Set<string>(); // Track items already given to avoid duplicates
-
-          for (let j = 0; j < numItems; j++) {
-            let selectedItem = randomElement(insertedItemTypes);
-            // Avoid duplicate items for same person
-            let attempts = 0;
-            while (givenItems.has(selectedItem.id) && attempts < 10) {
-              selectedItem = randomElement(insertedItemTypes);
-              attempts++;
-            }
-            givenItems.add(selectedItem.id);
-
-            const quantity = randomInt(1, 2);
-
-            await db.insert(distributionItem).values({
-              distributionId: insertedDistribution.id,
-              itemTypeId: selectedItem.id,
-              quantity,
-            });
-
-            distributionItemCount++;
-          }
-
-          distributionCount++;
-        }
-      }
-    }
-    console.log(`  → Created ${distributionCount} distribution records`);
-    console.log(`  → Created ${distributionItemCount} distribution items\n`);
 
     // ==========================================
     // SUMMARY
@@ -543,17 +294,8 @@ async function seed() {
     console.log(`📍 Routes:            ${insertedRoutes.length}`);
     console.log(`📍 Route Stops:       ${insertedStops.length}`);
     console.log(`👥 Homeless Persons:  ${insertedPersons.length}`);
-    console.log(`📦 Categories:        ${insertedCategories.length}`);
+    console.log(`📦 Item Categories:   ${insertedCategories.length}`);
     console.log(`🏷️  Item Types:        ${insertedItemTypes.length}`);
-    console.log(`🏭 Inventory Records: ${inventoryCount}`);
-    console.log(`🚐 Vans:              ${insertedVans.length}`);
-    console.log(`🧑‍✈️ Drivers:           ${insertedDrivers.length}`);
-    console.log(`🗓️  Route Runs:        ${insertedRouteRuns.length}`);
-    console.log(`📋 Distributions:     ${distributionCount}`);
-    console.log(`📦 Distribution Items: ${distributionItemCount}`);
-    console.log('═══════════════════════════════════════════');
-    console.log('\n📅 Distribution dates seeded:');
-    distributionDates.forEach(d => console.log(`   - ${d}`));
     console.log('═══════════════════════════════════════════\n');
 
   } catch (error) {
