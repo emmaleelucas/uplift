@@ -10,7 +10,7 @@ import {
   distribution,
   distributionItem,
 } from './db/schema';
-import routesData from '../routes.json';
+import routesData from './data/routes.json';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
