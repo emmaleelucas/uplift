@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Category, ItemType, SelectedItem } from "@/types/distribution";
+import { Category, ItemType } from "@/types/distribution";
 import { fetchCategories, fetchItemTypes } from "@/db/actions";
 import { Shirt, Sparkles, Apple, Bed, Package, LucideIcon } from "lucide-react";
 
@@ -15,7 +15,6 @@ export function useItems() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [itemTypes, setItemTypes] = useState<ItemType[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-    const [itemSearch, setItemSearch] = useState("");
 
     // Fetch categories and item types
     useEffect(() => {
@@ -32,15 +31,9 @@ export function useItems() {
 
     // Filtered items by selected category
     const filteredItems = useMemo(() => {
-        let items = [...itemTypes];
-        if (selectedCategory) {
-            items = items.filter(i => i.item_category_id === selectedCategory);
-        }
-        if (itemSearch) {
-            items = items.filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()));
-        }
-        return items;
-    }, [itemTypes, selectedCategory, itemSearch]);
+        if (!selectedCategory) return itemTypes;
+        return itemTypes.filter(i => i.item_category_id === selectedCategory);
+    }, [itemTypes, selectedCategory]);
 
     // Get category name by ID
     const getCategoryName = (itemCategoryId: string): string => {
@@ -65,24 +58,12 @@ export function useItems() {
         return { icon: Package, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-700' };
     };
 
-    // Create a selected item from an item type
-    const createSelectedItem = (item: ItemType): SelectedItem => ({
-        itemTypeId: item.id,
-        name: item.name,
-        category: getCategoryName(item.item_category_id),
-        quantity: 1
-    });
-
     return {
         categories,
-        itemTypes,
         selectedCategory,
         setSelectedCategory,
-        itemSearch,
-        setItemSearch,
         filteredItems,
         getCategoryName,
         getCategoryIcon,
-        createSelectedItem,
     };
 }

@@ -18,6 +18,14 @@ export function useRouteStops({ currentLocation }: UseRouteStopsProps) {
     const [stopConfirmed, setStopConfirmed] = useState(false);
     const [routeStopId, setRouteStopId] = useState<string | null>(null);
 
+    // Reset stop selection on mount (ensures fresh state on every page visit)
+    useEffect(() => {
+        setCurrentStop(null);
+        setDetectedStop(null);
+        setStopConfirmed(false);
+        setRouteStopId(null);
+    }, []);
+
     // Fetch routes and route stops
     useEffect(() => {
         const loadRoutesAndStops = async () => {
