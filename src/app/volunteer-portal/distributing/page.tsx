@@ -15,15 +15,12 @@ import {
     addDistributionItem,
     deleteDistributionItem,
 } from "@/db/actions";
-import {
-    StopHeader,
-    InTransitHeader,
-    StopSelector,
-    CheckInForm,
-    PersonCard,
-    ItemPickerModal,
-    DeleteConfirmModal,
-} from "@/components/volunteer-portal/distributing";
+import { StopHeader, InTransitHeader } from "@/components/volunteer-portal/distributing/StopHeader";
+import { StopSelector } from "@/components/volunteer-portal/distributing/StopSelector";
+import { CheckInForm } from "@/components/volunteer-portal/distributing/CheckInForm";
+import { PersonCard } from "@/components/volunteer-portal/distributing/PersonCard";
+import { ItemPickerModal } from "@/components/volunteer-portal/distributing/ItemPickerModal";
+import { DeleteConfirmModal } from "@/components/volunteer-portal/distributing/DeleteConfirmModal";
 
 export default function DistributingPage() {
     // Distribution context for location and stop management

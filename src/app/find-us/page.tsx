@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { RouteWithStops, ActiveSession } from "@/types/distribution";
 import { fetchRoutesWithStops, fetchActiveDistributionSessions } from "@/db/actions";
-import { ScheduleGrid, ActiveSessionCard } from "@/components/find-us";
+import { ScheduleGrid } from "@/components/find-us/ScheduleCard";
+import { ActiveSessionCard } from "@/components/find-us/ActiveSessionCard";
 import { MapPin, RefreshCw } from "lucide-react";
 import { MINUTES_PER_STOP } from "@/lib/constants/routes";
 

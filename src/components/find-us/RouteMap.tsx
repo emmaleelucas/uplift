@@ -98,7 +98,7 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
 
     // Update markers and routes when data changes
     useEffect(() => {
-        if (!map.current || !styleLoaded) return;
+        if (!map.current || !styleLoaded || !map.current.isStyleLoaded()) return;
 
         // Clear existing markers
         markersRef.current.forEach((marker) => marker.remove());

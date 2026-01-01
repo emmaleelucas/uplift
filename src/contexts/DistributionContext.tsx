@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useContext, ReactNode, useState, useEffect } from "react";
-import { RouteStop, Route, Coordinates } from "@/types/distribution";
+import { RouteStop, Route, Coordinates, DistributionSession } from "@/types/distribution";
 import { useLocation } from "@/hooks/distribution/useLocation";
 import { useRouteStops } from "@/hooks/distribution/useRouteStops";
+import { useSessionTracking } from "@/hooks/distribution/useSessionTracking";
 
 interface DistributionContextType {
     // Location
@@ -23,6 +24,9 @@ interface DistributionContextType {
     // Computed states
     newStopDetected: RouteStop | null;
     inTransit: boolean; // User left stop area, no stop detected
+
+    // Session tracking
+    session: DistributionSession | null;
 
     // Actions
     confirmStop: (stop: RouteStop) => void;
@@ -45,6 +49,14 @@ export function DistributionProvider({ children }: { children: ReactNode }) {
         confirmStop,
         changeStop,
     } = useRouteStops({ currentLocation });
+
+    // Session tracking for van location
+    const { session } = useSessionTracking({
+        currentLocation,
+        routeId: currentStop?.routeId ?? null,
+        currentStopId: currentStop?.id ?? null,
+        isActive: stopConfirmed,
+    });
 
     // Track dismissed stop ID to prevent re-showing modal for same stop
     const [dismissedStopId, setDismissedStopId] = useState<string | null>(null);
@@ -84,6 +96,7 @@ export function DistributionProvider({ children }: { children: ReactNode }) {
                 routeStopId,
                 newStopDetected,
                 inTransit,
+                session,
                 confirmStop,
                 changeStop,
                 dismissNewStop,
