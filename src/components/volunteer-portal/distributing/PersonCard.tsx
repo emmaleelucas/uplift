@@ -98,7 +98,7 @@ export function PersonCard({
                     <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <Utensils className="w-5 h-5 text-orange-500" />
+                                <Utensils className="w-5 h-5 text-slate-500" />
                                 <span className="font-medium text-slate-900 dark:text-white">Meal Served</span>
                             </div>
                             <button

@@ -51,6 +51,52 @@ export const route = pgTable("route", {
 });
 
 /* ======================
+   ROUTE SCHEDULES
+   (When each route runs - day of week and time)
+====================== */
+
+export const routeSchedule = pgTable("route_schedule", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    routeId: uuid("route_id")
+        .references(() => route.id)
+        .notNull(),
+    dayOfWeek: integer("day_of_week").notNull(), // 0=Sunday, 1=Monday, etc.
+    startTime: text("start_time").notNull(), // e.g., "18:00"
+});
+
+/* ======================
+   DISTRIBUTION SESSION
+   (Active distribution when van is running)
+====================== */
+
+export const distributionSession = pgTable("distribution_session", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    routeId: uuid("route_id")
+        .references(() => route.id)
+        .notNull(),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"),
+    currentStopId: uuid("current_stop_id")
+        .references(() => routeStop.id),
+    isActive: boolean("is_active").default(true).notNull(),
+});
+
+/* ======================
+   VAN LOCATION
+   (GPS tracking for vans during distribution)
+====================== */
+
+export const vanLocation = pgTable("van_location", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+        .references(() => distributionSession.id)
+        .notNull(),
+    latitude: numeric("latitude", { precision: 9, scale: 6 }).notNull(),
+    longitude: numeric("longitude", { precision: 9, scale: 6 }).notNull(),
+    recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+});
+
+/* ======================
    ROUTE STOPS
 ====================== */
 
@@ -139,6 +185,37 @@ export const itemTypeRelations = relations(itemType, ({ one, many }) => ({
 /* Route */
 export const routeRelations = relations(route, ({ many }) => ({
     stops: many(routeStop),
+    schedules: many(routeSchedule),
+    sessions: many(distributionSession),
+}));
+
+/* Route Schedule */
+export const routeScheduleRelations = relations(routeSchedule, ({ one }) => ({
+    route: one(route, {
+        fields: [routeSchedule.routeId],
+        references: [route.id],
+    }),
+}));
+
+/* Distribution Session */
+export const distributionSessionRelations = relations(distributionSession, ({ one, many }) => ({
+    route: one(route, {
+        fields: [distributionSession.routeId],
+        references: [route.id],
+    }),
+    currentStop: one(routeStop, {
+        fields: [distributionSession.currentStopId],
+        references: [routeStop.id],
+    }),
+    locations: many(vanLocation),
+}));
+
+/* Van Location */
+export const vanLocationRelations = relations(vanLocation, ({ one }) => ({
+    session: one(distributionSession, {
+        fields: [vanLocation.sessionId],
+        references: [distributionSession.id],
+    }),
 }));
 
 /* Route Stop */

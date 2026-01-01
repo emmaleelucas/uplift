@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase/client";
 import {
     Route,
     RouteStop,
+    RouteWithStops,
+    RouteSchedule,
+    ActiveSession,
     Category,
     ItemType,
     CheckedInPerson,
@@ -361,4 +364,163 @@ export async function deletePersonCheckIns(distributionIds: string[]): Promise<v
     for (const distId of distributionIds) {
         await deleteDistribution(distId);
     }
+}
+
+// ==========================================
+// FIND-US PAGE (PUBLIC)
+// ==========================================
+
+export async function fetchRoutesWithStops(): Promise<RouteWithStops[]> {
+    const { data: routes } = await supabase
+        .from('route')
+        .select('id, name')
+        .order('name');
+
+    if (!routes) return [];
+
+    const routesWithStops: RouteWithStops[] = [];
+
+    for (const route of routes) {
+        const { data: stops } = await supabase
+            .from('route_stop')
+            .select(`
+                id,
+                name,
+                location_description,
+                latitude,
+                longitude,
+                stop_number
+            `)
+            .eq('route_id', route.id)
+            .order('stop_number');
+
+        const { data: schedules } = await supabase
+            .from('route_schedule')
+            .select('id, day_of_week, start_time')
+            .eq('route_id', route.id);
+
+        routesWithStops.push({
+            id: route.id,
+            name: route.name,
+            stops: (stops || []).map(s => ({
+                id: s.id,
+                name: s.name,
+                locationDescription: s.location_description,
+                latitude: parseFloat(s.latitude),
+                longitude: parseFloat(s.longitude),
+                stopNumber: s.stop_number,
+                routeId: route.id,
+                routeName: route.name,
+            })),
+            schedules: (schedules || []).map(s => ({
+                id: s.id,
+                routeId: route.id,
+                dayOfWeek: s.day_of_week,
+                startTime: s.start_time,
+            })),
+        });
+    }
+
+    return routesWithStops;
+}
+
+export async function fetchActiveDistributionSessions(): Promise<ActiveSession[]> {
+    const { data: sessions } = await supabase
+        .from('distribution_session')
+        .select(`
+            id,
+            route_id,
+            started_at,
+            ended_at,
+            current_stop_id,
+            is_active,
+            route:route_id (id, name)
+        `)
+        .eq('is_active', true);
+
+    if (!sessions || sessions.length === 0) return [];
+
+    const activeSessions: ActiveSession[] = [];
+
+    for (const session of sessions) {
+        const routeData = session.route as unknown as { id: string; name: string };
+
+        // Get route stops
+        const { data: stops } = await supabase
+            .from('route_stop')
+            .select(`
+                id,
+                name,
+                location_description,
+                latitude,
+                longitude,
+                stop_number
+            `)
+            .eq('route_id', routeData.id)
+            .order('stop_number');
+
+        // Get latest van location
+        const { data: locations } = await supabase
+            .from('van_location')
+            .select('id, latitude, longitude, recorded_at')
+            .eq('session_id', session.id)
+            .order('recorded_at', { ascending: false })
+            .limit(1);
+
+        const routeStops: RouteStop[] = (stops || []).map(s => ({
+            id: s.id,
+            name: s.name,
+            locationDescription: s.location_description,
+            latitude: parseFloat(s.latitude),
+            longitude: parseFloat(s.longitude),
+            stopNumber: s.stop_number,
+            routeId: routeData.id,
+            routeName: routeData.name,
+        }));
+
+        const currentStop = routeStops.find(s => s.id === session.current_stop_id);
+        const nextStop = currentStop
+            ? routeStops.find(s => s.stopNumber === currentStop.stopNumber + 1)
+            : routeStops[0];
+
+        activeSessions.push({
+            id: session.id,
+            routeId: routeData.id,
+            routeName: routeData.name,
+            startedAt: session.started_at,
+            endedAt: session.ended_at,
+            currentStopId: session.current_stop_id,
+            currentStopNumber: currentStop?.stopNumber,
+            isActive: session.is_active,
+            route: {
+                id: routeData.id,
+                name: routeData.name,
+                stops: routeStops,
+            },
+            currentLocation: locations?.[0] ? {
+                id: locations[0].id,
+                sessionId: session.id,
+                latitude: parseFloat(locations[0].latitude),
+                longitude: parseFloat(locations[0].longitude),
+                recordedAt: locations[0].recorded_at,
+            } : undefined,
+            nextStop,
+        });
+    }
+
+    return activeSessions;
+}
+
+export async function fetchRouteSchedules(): Promise<RouteSchedule[]> {
+    const { data } = await supabase
+        .from('route_schedule')
+        .select('id, route_id, day_of_week, start_time')
+        .order('day_of_week');
+
+    return (data || []).map(s => ({
+        id: s.id,
+        routeId: s.route_id,
+        dayOfWeek: s.day_of_week,
+        startTime: s.start_time,
+    }));
 }

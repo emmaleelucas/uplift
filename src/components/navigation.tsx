@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, X, ClipboardList } from "lucide-react";
+import { Menu, X, ClipboardList, MapPin } from "lucide-react";
 
 const navLinks = [
+  { href: "/find-us", label: "Find Us", icon: MapPin },
   { href: "/volunteer-portal", label: "Volunteer Portal", icon: ClipboardList },
 ];
 

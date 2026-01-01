@@ -20,7 +20,7 @@ export function Footer() {
                     {/* Brand Column */}
                     <div className="lg:max-w-md">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 flex items-center justify-center">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 flex items-center justify-center">
                                 <span className="text-white font-bold text-xl">U</span>
                             </div>
                             <span className="text-2xl font-bold">Uplift</span>
@@ -37,17 +37,17 @@ export function Footer() {
                             <h4 className="text-lg font-semibold mb-6">Contact Us</h4>
                             <div className="space-y-4 text-white/70">
                                 <div className="flex items-start gap-3">
-                                    <Mail className="w-5 h-5 text-orange-500 flex-shrink-0 mt-1" />
+                                    <Mail className="w-5 h-5 text-amber-500 flex-shrink-0 mt-1" />
                                     <div>
                                         <p className="font-medium text-white">General Inquiries</p>
-                                        <a href="mailto:info@uplift.org" className="hover:text-orange-400 transition-colors">info@uplift.org</a>
+                                        <a href="mailto:info@uplift.org" className="hover:text-amber-400 transition-colors">info@uplift.org</a>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-3">
                                     <div className="w-5 flex-shrink-0" />
                                     <div>
                                         <p className="font-medium text-white">Volunteer Coordinator</p>
-                                        <a href="mailto:volunteer@uplift.org" className="hover:text-orange-400 transition-colors">volunteer@uplift.org</a>
+                                        <a href="mailto:volunteer@uplift.org" className="hover:text-amber-400 transition-colors">volunteer@uplift.org</a>
                                     </div>
                                 </div>
                             </div>
@@ -58,7 +58,7 @@ export function Footer() {
                             <h4 className="text-lg font-semibold mb-6">Locations</h4>
                             <div className="space-y-6 text-white/70">
                                 <div className="flex items-start gap-3">
-                                    <MapPin className="w-5 h-5 text-orange-500 flex-shrink-0 mt-1" />
+                                    <MapPin className="w-5 h-5 text-amber-500 flex-shrink-0 mt-1" />
                                     <div>
                                         <p className="font-medium text-white">Warehouse Address</p>
                                         <p>1516 Prospect Ave.</p>

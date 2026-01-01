@@ -45,10 +45,10 @@ export function StopSelector({
                 {detectedStop ? (
                     <div className="mb-4">
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Detected stop:</p>
-                        <div className="bg-green-50 dark:bg-green-900/20 border-2 border-green-500 rounded-xl p-4">
+                        <div className="bg-slate-100 dark:bg-slate-700/50 border-2 border-slate-400 dark:border-slate-500 rounded-xl p-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center font-bold text-white">
+                                    <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white">
                                         {detectedStop.stopNumber}
                                     </div>
                                     <div>
@@ -62,7 +62,7 @@ export function StopSelector({
                                 </div>
                                 <button
                                     onClick={() => onConfirmStop(detectedStop)}
-                                    className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+                                    className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium transition-colors"
                                 >
                                     Confirm
                                 </button>
@@ -144,13 +144,13 @@ export function StopSelector({
                                             }}
                                             className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
                                                 detectedStop?.id === stop.id
-                                                    ? 'bg-green-50 dark:bg-green-900/20 border-2 border-green-500'
+                                                    ? 'bg-slate-100 dark:bg-slate-700/50 border-2 border-slate-400 dark:border-slate-500'
                                                     : 'bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700'
                                             }`}
                                         >
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
                                                 detectedStop?.id === stop.id
-                                                    ? 'bg-green-500 text-white'
+                                                    ? 'bg-slate-600 text-white'
                                                     : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'
                                             }`}>
                                                 {stop.stopNumber}
@@ -159,7 +159,7 @@ export function StopSelector({
                                                 {stop.name}
                                             </span>
                                             {detectedStop?.id === stop.id && (
-                                                <span className="ml-auto text-xs text-green-600 dark:text-green-400 font-medium">
+                                                <span className="ml-auto text-xs text-slate-600 dark:text-slate-400 font-medium">
                                                     GPS detected
                                                 </span>
                                             )}

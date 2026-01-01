@@ -23,7 +23,6 @@ import {
     PersonCard,
     ItemPickerModal,
     DeleteConfirmModal,
-    NewStopDetectedModal,
 } from "@/components/volunteer-portal/distributing";
 
 export default function DistributingPage() {
@@ -41,7 +40,6 @@ export default function DistributingPage() {
         inTransit,
         confirmStop,
         changeStop,
-        dismissNewStop,
     } = useDistribution();
 
     // Items management
@@ -118,6 +116,27 @@ export default function DistributingPage() {
     useEffect(() => {
         fetchPeople();
     }, [currentStop]);
+
+    // Handle transition to in-transit or new stop detected state - clear UI and list
+    useEffect(() => {
+        if (inTransit || newStopDetected) {
+            // Close check-in form and clear items
+            setShowNewCheckIn(false);
+            setCheckInItems([]);
+            setShowCheckInItemPicker(false);
+
+            // Close item picker for existing person
+            setShowItemPicker(false);
+            setPendingItems([]);
+
+            // Clear selection and people list
+            setSelectedPerson(null);
+            setCheckedInPeople([]);
+
+            // Clear any pending delete
+            setPersonToDelete(null);
+        }
+    }, [inTransit, newStopDetected]);
 
     // Toggle meal served
     const toggleMealServed = async (person: CheckedInPerson) => {
@@ -263,7 +282,9 @@ export default function DistributingPage() {
                             <StopHeader
                                 currentStop={currentStop}
                                 nextStop={nextStop}
+                                newStopDetected={newStopDetected}
                                 onChangeStop={changeStop}
+                                onConfirmNewStop={handleConfirmNewStop}
                             />
                         )
                     )}
@@ -283,23 +304,23 @@ export default function DistributingPage() {
                         )}
 
                         {/* New Check-In Button or Form */}
-                        {!showNewCheckIn ? (
+                        {!showNewCheckIn || inTransit || newStopDetected ? (
                             <button
                                 onClick={() => {
-                                    if (!inTransit) {
+                                    if (!inTransit && !newStopDetected) {
                                         setSelectedPerson(null);
                                         setShowNewCheckIn(true);
                                     }
                                 }}
-                                disabled={inTransit}
+                                disabled={inTransit || !!newStopDetected}
                                 className={`w-full py-4 rounded-2xl font-semibold text-lg transition-colors flex items-center justify-center gap-2 ${
-                                    inTransit
+                                    inTransit || newStopDetected
                                         ? 'bg-slate-300 dark:bg-slate-600 text-slate-500 dark:text-slate-400 cursor-not-allowed'
-                                        : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                                        : 'bg-slate-600 hover:bg-slate-700 text-white'
                                 }`}
                             >
                                 <UserPlus className="w-5 h-5" />
-                                {inTransit ? 'Check-Ins Paused While In Transit' : 'Check In New Person'}
+                                {inTransit ? 'Check-Ins Paused While In Transit' : newStopDetected ? 'Confirm Location to Check In' : 'Check In New Person'}
                             </button>
                         ) : (
                             <CheckInForm
@@ -317,25 +338,27 @@ export default function DistributingPage() {
                             />
                         )}
 
-                        {/* List Header */}
-                        <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                            <MapPin className="w-4 h-4" />
-                            <span>Checked in at this stop ({checkedInPeople.length})</span>
-                        </div>
-
-                        {/* Checked-in People List */}
-                        {loadingPeople ? (
-                            <div className="flex items-center justify-center py-12">
-                                <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                        {/* List Header - Hide when in transit or new stop detected */}
+                        {!inTransit && !newStopDetected && (
+                            <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                                <MapPin className="w-4 h-4" />
+                                <span>Checked in at this stop ({checkedInPeople.length})</span>
                             </div>
-                        ) : checkedInPeople.length === 0 ? (
+                        )}
+
+                        {/* Checked-in People List - Hide when in transit or new stop detected */}
+                        {!inTransit && !newStopDetected && loadingPeople ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
+                            </div>
+                        ) : !inTransit && !newStopDetected && checkedInPeople.length === 0 ? (
                             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
                                 <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
                                 <p className="text-slate-600 dark:text-slate-400">
                                     No one checked in at this stop yet
                                 </p>
                             </div>
-                        ) : (
+                        ) : !inTransit && !newStopDetected && (
                             checkedInPeople.map((person) => (
                                 <PersonCard
                                     key={person.id}
@@ -353,8 +376,8 @@ export default function DistributingPage() {
                             ))
                         )}
 
-                        {/* Refresh Button */}
-                        {checkedInPeople.length > 0 && (
+                        {/* Refresh Button - Hide when in transit or new stop detected */}
+                        {!inTransit && !newStopDetected && checkedInPeople.length > 0 && (
                             <button
                                 onClick={() => {
                                     setSelectedPerson(null);
@@ -412,17 +435,6 @@ export default function DistributingPage() {
                         onConfirm={confirmDeleteCheckIn}
                         onCancel={() => setPersonToDelete(null)}
                     />
-
-                    {/* New Stop Detected Modal - Blocks UI until user responds */}
-                    {newStopDetected && currentStop && (
-                        <NewStopDetectedModal
-                            newStop={newStopDetected}
-                            currentStop={currentStop}
-                            onConfirm={handleConfirmNewStop}
-                            onStayAtCurrent={dismissNewStop}
-                            onSelectDifferent={changeStop}
-                        />
-                    )}
                 </>
             )}
         </div>

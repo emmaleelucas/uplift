@@ -12,11 +12,11 @@
     --popover-foreground: 20 20% 12%;
     --primary: 48 100% 45%;
     --primary-foreground: 20 20% 12%;
-    --secondary: 24 100% 95%;
+    --secondary: 38 92% 95%;
     --secondary-foreground: 20 20% 12%;
     --muted: 48 30% 94%;
     --muted-foreground: 20 15% 40%;
-    --accent: 24 100% 40%;
+    --accent: 38 92% 40%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
@@ -28,7 +28,7 @@
     /* Custom colors for Uplift - Yellow Forward with Orange Accent */
     --uplift-yellow: 48 100% 50%;
     --uplift-gold: 45 100% 45%;
-    --uplift-orange: 24 100% 40%;
+    --uplift-orange: 38 92% 40%;
     --uplift-burnt: 20 85% 35%;
     --uplift-warm: 48 100% 96%;
     --uplift-cream: 48 60% 97%;
@@ -48,7 +48,7 @@
     --secondary-foreground: 48 40% 95%;
     --muted: 20 18% 16%;
     --muted-foreground: 48 30% 55%;
-    --accent: 24 100% 45%;
+    --accent: 38 92% 45%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
@@ -58,7 +58,7 @@
 
     --uplift-yellow: 48 100% 55%;
     --uplift-gold: 45 100% 50%;
-    --uplift-orange: 24 100% 45%;
+    --uplift-orange: 38 92% 45%;
     --uplift-burnt: 20 85% 40%;
     --uplift-warm: 20 18% 14%;
     --uplift-cream: 20 18% 11%;
@@ -79,18 +79,18 @@
 /* Custom utility classes */
 @layer utilities {
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-600;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-amber-500 to-amber-700;
   }
 
   .text-gradient-dark {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 via-amber-400 to-orange-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 via-amber-400 to-amber-600;
   }
 
   .hero-gradient {
     background: linear-gradient(135deg,
         hsl(48, 100%, 50%) 0%,
         hsl(45, 100%, 45%) 50%,
-        hsl(24, 100%, 40%) 100%);
+        hsl(38, 92%, 38%) 100%);
   }
 
   .card-hover {
@@ -190,6 +190,19 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
 }
 
 /* Smooth scrolling */

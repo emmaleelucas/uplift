@@ -116,15 +116,14 @@ export function ItemPickerModal({
                         /* Step 1: Select Category */
                         <div>
                             <p className="text-sm text-slate-500 mb-3">Select a category:</p>
-                            <div className="grid grid-cols-2 gap-3">
-                                {categories.map((cat, index) => {
+                            <div className="grid grid-cols-3 gap-3">
+                                {categories.map((cat) => {
                                     const { icon: Icon, color, bg } = getCategoryIcon(cat.name);
-                                    const isLastOdd = categories.length % 2 === 1 && index === categories.length - 1;
                                     return (
                                         <button
                                             key={cat.id}
                                             onClick={() => setSelectedCategory(cat.id)}
-                                            className={`p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 flex flex-col items-center gap-2 transition-colors ${isLastOdd ? 'col-span-2' : ''}`}
+                                            className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-600 flex flex-col items-center gap-2 transition-colors"
                                         >
                                             <div className={`w-12 h-12 rounded-full ${bg} flex items-center justify-center`}>
                                                 <Icon className={`w-6 h-6 ${color}`} />

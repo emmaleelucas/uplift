@@ -59,3 +59,41 @@ export interface Coordinates {
     lat: number;
     lng: number;
 }
+
+export interface RouteSchedule {
+    id: string;
+    routeId: string;
+    dayOfWeek: number; // 0=Sunday, 1=Monday, etc.
+    startTime: string; // e.g., "18:00"
+}
+
+export interface DistributionSession {
+    id: string;
+    routeId: string;
+    routeName?: string;
+    startedAt: string;
+    endedAt: string | null;
+    currentStopId: string | null;
+    currentStopNumber?: number;
+    isActive: boolean;
+}
+
+export interface VanLocation {
+    id: string;
+    sessionId: string;
+    latitude: number;
+    longitude: number;
+    recordedAt: string;
+}
+
+export interface RouteWithStops extends Route {
+    stops: RouteStop[];
+    schedules?: RouteSchedule[];
+}
+
+export interface ActiveSession extends DistributionSession {
+    route: RouteWithStops;
+    currentLocation?: VanLocation;
+    nextStop?: RouteStop;
+    estimatedArrival?: string;
+}

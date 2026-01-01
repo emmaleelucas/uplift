@@ -1,4 +1,4 @@
-export { StopHeader, InTransitHeader, NewStopDetectedModal } from './StopHeader';
+export { StopHeader, InTransitHeader } from './StopHeader';
 export { StopSelector } from './StopSelector';
 export { CheckInForm } from './CheckInForm';
 export { PersonCard } from './PersonCard';

@@ -1,3 +1,15 @@
+// Uplift Organization HQ - 1516 Prospect Ave, Kansas City, MO 64127
+// All routes start and end here
+export const UPLIFT_HQ = {
+    name: "Uplift HQ",
+    address: "1516 Prospect Ave, Kansas City, MO 64127",
+    lat: 39.094293167474206,
+    lng: -94.55208461807936,
+};
+
+// ETA calculation: minutes spent at each stop
+export const MINUTES_PER_STOP = 30;
+
 // Route color mapping and configuration
 
 export interface RouteColorConfig {
@@ -7,16 +19,16 @@ export interface RouteColorConfig {
 
 export const ROUTE_COLORS: Record<string, RouteColorConfig> = {
     'West Route': {
-        bg: 'bg-green-500',
-        gradient: 'from-green-500 to-green-600',
+        bg: 'bg-green-700',
+        gradient: 'from-green-700 to-green-800',
     },
     'Central Route': {
-        bg: 'bg-red-500',
-        gradient: 'from-red-500 to-red-600',
+        bg: 'bg-pink-800',
+        gradient: 'from-pink-800 to-pink-900',
     },
     'Midtown Route': {
-        bg: 'bg-purple-500',
-        gradient: 'from-purple-500 to-purple-600',
+        bg: 'bg-orange-700',
+        gradient: 'from-orange-700 to-orange-800',
     },
     'East Route': {
         bg: 'bg-teal-500',
@@ -46,3 +58,6 @@ export const MOCK_COORDINATES = MOCK_LOCATION_SEQUENCE[0];
 
 // Stop detection radius in meters (volunteer must be within this distance to detect a stop)
 export const STOP_DETECTION_RADIUS = 350;
+
+// Mock active session for find-us page testing
+export const USE_MOCK_ACTIVE_SESSION = true;
