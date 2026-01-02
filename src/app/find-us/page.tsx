@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { RouteWithStops, ActiveSession } from "@/types/distribution";
-import { fetchRoutesWithStops, fetchActiveDistributionSessions } from "@/db/actions";
+import { RouteWithStops } from "@/types/distribution";
+import { fetchRoutesWithStops } from "@/db/actions";
 import { ScheduleGrid } from "@/components/find-us/ScheduleCard";
-import { ActiveSessionCard } from "@/components/find-us/ActiveSessionCard";
 import { MapPin, RefreshCw } from "lucide-react";
-import { MINUTES_PER_STOP } from "@/lib/constants/routes";
 
 // MapBox access token from environment
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
@@ -27,36 +25,19 @@ const RouteMap = dynamic(
 
 export default function FindUsPage() {
     const [routes, setRoutes] = useState<RouteWithStops[]>([]);
-    const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
     const loadData = async () => {
         setLoading(true);
-        const [routesData, sessionsData] = await Promise.all([
-            fetchRoutesWithStops(),
-            fetchActiveDistributionSessions(),
-        ]);
+        const routesData = await fetchRoutesWithStops();
         setRoutes(routesData);
-        setActiveSessions(sessionsData);
-        setLastRefresh(new Date());
         setLoading(false);
     };
 
     useEffect(() => {
         loadData();
-
-        // Auto-refresh every 30 seconds
-        const interval = setInterval(() => {
-            loadData();
-        }, 30000);
-
-        return () => clearInterval(interval);
     }, []);
-
-    const activeRouteIds = activeSessions.map((s) => s.routeId);
-    const hasActiveSessions = activeSessions.length > 0;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -86,21 +67,6 @@ export default function FindUsPage() {
             </div>
 
             <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-                {/* Active sessions banner */}
-                {hasActiveSessions && (
-                    <div className="rounded-xl p-4 bg-green-50 border border-green-200">
-                        <div className="flex items-center gap-2 text-green-800">
-                            <div className="w-3 h-3 rounded-full animate-pulse bg-green-500" />
-                            <span className="font-medium">
-                                {activeSessions.length} van{activeSessions.length > 1 ? "s" : ""} currently on route!
-                            </span>
-                        </div>
-                        <p className="text-sm mt-1 text-green-600">
-                            Last updated: {lastRefresh?.toLocaleTimeString() || "..."}
-                        </p>
-                    </div>
-                )}
-
                 {/* Map */}
                 <div>
                     <div className="flex items-center justify-between mb-3">
@@ -117,7 +83,6 @@ export default function FindUsPage() {
                     {MAPBOX_ACCESS_TOKEN ? (
                         <RouteMap
                             routes={routes}
-                            activeSessions={activeSessions}
                             selectedRouteId={selectedRouteId}
                             accessToken={MAPBOX_ACCESS_TOKEN}
                         />
@@ -128,38 +93,11 @@ export default function FindUsPage() {
                     )}
                 </div>
 
-                {/* Active session cards */}
-                {hasActiveSessions && (
-                    <div>
-                        <h2 className="text-lg font-semibold text-gray-900 mb-3">
-                            Active Routes
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {activeSessions.map((session) => {
-                                const etaMinutes = session.nextStop
-                                    ? (session.currentStopNumber && session.nextStop.stopNumber
-                                        ? Math.max(0, (session.nextStop.stopNumber - session.currentStopNumber) * MINUTES_PER_STOP)
-                                        : session.nextStop.stopNumber * MINUTES_PER_STOP)
-                                    : undefined;
-                                return (
-                                    <ActiveSessionCard
-                                        key={session.id}
-                                        session={session}
-                                        estimatedArrivalMinutes={etaMinutes}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
                 {/* Routes */}
                 <ScheduleGrid
                     routes={routes}
                     selectedRouteId={selectedRouteId}
                     onSelectRoute={setSelectedRouteId}
-                    activeRouteIds={activeRouteIds}
-                    activeSessions={activeSessions}
                 />
 
                 {/* Loading state */}

@@ -3,21 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { RouteWithStops, ActiveSession, Coordinates } from "@/types/distribution";
-import { UPLIFT_HQ, MINUTES_PER_STOP } from "@/lib/constants/routes";
-
-// Calculate ETA in minutes based on current stop and target stop
-function calculateETA(currentStopNumber: number | undefined, targetStopNumber: number): number {
-    if (!currentStopNumber) return targetStopNumber * MINUTES_PER_STOP;
-    const stopsAway = targetStopNumber - currentStopNumber;
-    return Math.max(0, stopsAway * MINUTES_PER_STOP);
-}
-
-// Format estimated arrival time
-function formatEstimatedTime(minutesFromNow: number): string {
-    const arrival = new Date(Date.now() + minutesFromNow * 60 * 1000);
-    return arrival.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
+import { RouteWithStops, Coordinates } from "@/types/distribution";
+import { UPLIFT_HQ } from "@/lib/constants/routes";
 
 // Route colors (hex values for MapBox)
 const ROUTE_COLORS: Record<string, string> = {
@@ -29,12 +16,11 @@ const ROUTE_COLORS: Record<string, string> = {
 
 interface RouteMapProps {
     routes: RouteWithStops[];
-    activeSessions: ActiveSession[];
     selectedRouteId: string | null;
     accessToken: string;
 }
 
-export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken }: RouteMapProps) {
+export function RouteMap({ routes, selectedRouteId, accessToken }: RouteMapProps) {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
     const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -106,23 +92,17 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
 
         // Remove existing route layers and sources safely
         routes.forEach((route) => {
-            const sourceIds = [
-                `route-${route.id}`,
-                `route-${route.id}-completed`,
-                `route-${route.id}-remaining`,
-            ];
-            sourceIds.forEach((sourceId) => {
-                try {
-                    if (map.current?.getLayer(sourceId)) {
-                        map.current.removeLayer(sourceId);
-                    }
-                    if (map.current?.getSource(sourceId)) {
-                        map.current.removeSource(sourceId);
-                    }
-                } catch {
-                    // Ignore errors when removing layers/sources
+            const sourceId = `route-${route.id}`;
+            try {
+                if (map.current?.getLayer(sourceId)) {
+                    map.current.removeLayer(sourceId);
                 }
-            });
+                if (map.current?.getSource(sourceId)) {
+                    map.current.removeSource(sourceId);
+                }
+            } catch {
+                // Ignore errors when removing layers/sources
+            }
         });
 
         // Filter routes if one is selected
@@ -135,93 +115,32 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
             if (route.stops.length === 0) return;
 
             const sortedStops = [...route.stops].sort((a, b) => a.stopNumber - b.stopNumber);
-            const activeSession = activeSessions.find((s) => s.routeId === route.id);
-            const currentStopNumber = activeSession?.currentStopNumber;
             const color = ROUTE_COLORS[route.name] || "#6b7280";
 
-            if (activeSession && currentStopNumber) {
-                // Split into completed (grey) and remaining (colored) portions
-                const completedStops = sortedStops.filter(s => s.stopNumber < currentStopNumber);
-                const currentAndRemainingStops = sortedStops.filter(s => s.stopNumber >= currentStopNumber);
+            // Draw full route in color
+            const coordinates: [number, number][] = [
+                [UPLIFT_HQ.lng, UPLIFT_HQ.lat],
+                ...sortedStops.map((stop) => [stop.longitude, stop.latitude] as [number, number]),
+                [UPLIFT_HQ.lng, UPLIFT_HQ.lat],
+            ];
 
-                // Completed portion: HQ -> completed stops -> current stop
-                if (completedStops.length > 0 || currentStopNumber > 1) {
-                    const completedCoords: [number, number][] = [
-                        [UPLIFT_HQ.lng, UPLIFT_HQ.lat],
-                        ...completedStops.map((stop) => [stop.longitude, stop.latitude] as [number, number]),
-                        ...(currentAndRemainingStops.length > 0 ? [[currentAndRemainingStops[0].longitude, currentAndRemainingStops[0].latitude] as [number, number]] : []),
-                    ];
+            const sourceId = `route-${route.id}`;
+            map.current?.addSource(sourceId, {
+                type: "geojson",
+                data: {
+                    type: "Feature",
+                    properties: {},
+                    geometry: { type: "LineString", coordinates },
+                },
+            });
 
-                    const completedSourceId = `route-${route.id}-completed`;
-                    map.current?.addSource(completedSourceId, {
-                        type: "geojson",
-                        data: {
-                            type: "Feature",
-                            properties: {},
-                            geometry: { type: "LineString", coordinates: completedCoords },
-                        },
-                    });
-
-                    map.current?.addLayer({
-                        id: completedSourceId,
-                        type: "line",
-                        source: completedSourceId,
-                        layout: { "line-join": "round", "line-cap": "round" },
-                        paint: { "line-color": "#9ca3af", "line-width": 4, "line-opacity": 0.5 },
-                    });
-                }
-
-                // Remaining portion: current stop -> remaining stops -> HQ
-                if (currentAndRemainingStops.length > 0) {
-                    const remainingCoords: [number, number][] = [
-                        ...currentAndRemainingStops.map((stop) => [stop.longitude, stop.latitude] as [number, number]),
-                        [UPLIFT_HQ.lng, UPLIFT_HQ.lat],
-                    ];
-
-                    const remainingSourceId = `route-${route.id}-remaining`;
-                    map.current?.addSource(remainingSourceId, {
-                        type: "geojson",
-                        data: {
-                            type: "Feature",
-                            properties: {},
-                            geometry: { type: "LineString", coordinates: remainingCoords },
-                        },
-                    });
-
-                    map.current?.addLayer({
-                        id: remainingSourceId,
-                        type: "line",
-                        source: remainingSourceId,
-                        layout: { "line-join": "round", "line-cap": "round" },
-                        paint: { "line-color": color, "line-width": 4, "line-opacity": 0.7 },
-                    });
-                }
-            } else {
-                // No active session - draw full route in color
-                const coordinates: [number, number][] = [
-                    [UPLIFT_HQ.lng, UPLIFT_HQ.lat],
-                    ...sortedStops.map((stop) => [stop.longitude, stop.latitude] as [number, number]),
-                    [UPLIFT_HQ.lng, UPLIFT_HQ.lat],
-                ];
-
-                const sourceId = `route-${route.id}`;
-                map.current?.addSource(sourceId, {
-                    type: "geojson",
-                    data: {
-                        type: "Feature",
-                        properties: {},
-                        geometry: { type: "LineString", coordinates },
-                    },
-                });
-
-                map.current?.addLayer({
-                    id: sourceId,
-                    type: "line",
-                    source: sourceId,
-                    layout: { "line-join": "round", "line-cap": "round" },
-                    paint: { "line-color": color, "line-width": 4, "line-opacity": 0.7 },
-                });
-            }
+            map.current?.addLayer({
+                id: sourceId,
+                type: "line",
+                source: sourceId,
+                layout: { "line-join": "round", "line-cap": "round" },
+                paint: { "line-color": color, "line-width": 4, "line-opacity": 0.7 },
+            });
         });
 
         // Add Uplift HQ marker (neutral slate color)
@@ -266,25 +185,16 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
         // Add stop markers
         displayRoutes.forEach((route) => {
             const color = ROUTE_COLORS[route.name] || "#6b7280";
-            const activeSession = activeSessions.find((s) => s.routeId === route.id);
+            const totalStops = route.stops.length;
 
             route.stops.forEach((stop) => {
-                const isCurrentStop = activeSession?.currentStopId === stop.id;
-                const isPastStop = activeSession && activeSession.currentStopNumber && stop.stopNumber < activeSession.currentStopNumber;
-                const isFutureStop = activeSession && activeSession.currentStopNumber && stop.stopNumber > activeSession.currentStopNumber;
-
-                // Calculate ETA for future stops
-                const etaMinutes = activeSession && isFutureStop
-                    ? calculateETA(activeSession.currentStopNumber, stop.stopNumber)
-                    : null;
-
                 // Create marker element
                 const el = document.createElement("div");
                 el.className = "stop-marker";
                 el.style.cssText = `
                     width: 28px;
                     height: 28px;
-                    background: ${isPastStop ? "#9ca3af" : color};
+                    background: ${color};
                     border: 2px solid white;
                     border-radius: 50%;
                     display: flex;
@@ -295,46 +205,8 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
                     font-weight: bold;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                     cursor: pointer;
-                    ${isPastStop ? "opacity: 0.6;" : ""}
                 `;
                 el.textContent = String(stop.stopNumber);
-
-                if (isCurrentStop) {
-                    el.style.border = "3px solid #22c55e";
-                    el.style.boxShadow = "0 0 0 3px rgba(34, 197, 94, 0.4)";
-                    el.style.background = color;
-                    el.style.opacity = "1";
-                }
-
-                // Calculate remaining stops info
-                const totalStops = route.stops.length;
-                const sortedStops = [...route.stops].sort((a, b) => a.stopNumber - b.stopNumber);
-                const remainingStops = activeSession
-                    ? sortedStops.filter(s => s.stopNumber > (activeSession.currentStopNumber || 0))
-                    : [];
-                const stopsUntilThis = activeSession && !isPastStop && !isCurrentStop
-                    ? sortedStops.filter(s => s.stopNumber > (activeSession.currentStopNumber || 0) && s.stopNumber < stop.stopNumber)
-                    : [];
-
-                // Build ETA text
-                let etaText = "";
-                if (isCurrentStop) {
-                    const stopsLeft = remainingStops.length;
-                    etaText = `
-                        <p style="font-size: 12px; color: #16a34a; font-weight: 500; margin: 8px 0 0 0;">🚐 Van is here!</p>
-                        <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">${stopsLeft} stop${stopsLeft !== 1 ? 's' : ''} remaining after this</p>
-                    `;
-                } else if (isPastStop) {
-                    etaText = `<p style="font-size: 11px; color: #9ca3af; margin: 4px 0 0 0;">✓ Completed</p>`;
-                } else if (etaMinutes !== null) {
-                    const estimatedTime = formatEstimatedTime(etaMinutes);
-                    const stopsAway = stopsUntilThis.length + 1;
-                    const stopsAfter = remainingStops.length - stopsAway;
-                    etaText = `
-                        <p style="font-size: 12px; color: #3b82f6; font-weight: 500; margin: 8px 0 0 0;">⏱ ~${etaMinutes} min (~${estimatedTime})</p>
-                        <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">${stopsAway} stop${stopsAway !== 1 ? 's' : ''} away${stopsAfter > 0 ? ` · ${stopsAfter} more after` : ' · Last stop'}</p>
-                    `;
-                }
 
                 // Create popup
                 const popup = new mapboxgl.Popup({ offset: 25, className: "uplift-popup" }).setHTML(`
@@ -344,7 +216,6 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
                             ${route.name} - Stop ${stop.stopNumber} of ${totalStops}
                         </p>
                         ${stop.locationDescription ? `<p style="font-size: 11px; color: #9ca3af; margin: 4px 0 0 0;">${stop.locationDescription}</p>` : ""}
-                        ${etaText}
                     </div>
                 `);
 
@@ -355,48 +226,6 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
 
                 markersRef.current.push(marker);
             });
-        });
-
-        // Add van markers
-        activeSessions.forEach((session) => {
-            if (!session.currentLocation) return;
-
-            // Filter out if route not in display
-            if (selectedRouteId && session.routeId !== selectedRouteId) return;
-
-            const el = document.createElement("div");
-            el.className = "van-marker";
-            el.style.cssText = `
-                width: 36px;
-                height: 36px;
-                background: #3b82f6;
-                border: 2px solid white;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 20px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-                cursor: pointer;
-            `;
-            el.textContent = "🚐";
-
-            const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
-                <div style="padding: 8px;">
-                    <p style="font-weight: 600; font-size: 14px; margin: 0;">${session.routeName}</p>
-                    <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0 0;">
-                        Currently at Stop ${session.currentStopNumber || 1}
-                    </p>
-                    ${session.nextStop ? `<p style="font-size: 12px; color: #3b82f6; margin: 4px 0 0 0;">Next: ${session.nextStop.name}</p>` : ""}
-                </div>
-            `);
-
-            const marker = new mapboxgl.Marker({ element: el })
-                .setLngLat([session.currentLocation.longitude, session.currentLocation.latitude])
-                .setPopup(popup)
-                .addTo(map.current!);
-
-            markersRef.current.push(marker);
         });
 
         // Fit bounds only when route selection changes
@@ -421,7 +250,7 @@ export function RouteMap({ routes, activeSessions, selectedRouteId, accessToken 
                 map.current?.fitBounds(bounds, { padding: 50, animate: true });
             }
         }
-    }, [routes, activeSessions, selectedRouteId, styleLoaded]);
+    }, [routes, selectedRouteId, styleLoaded]);
 
     return (
         <div className="w-full h-[400px] rounded-xl overflow-hidden shadow-lg relative">
