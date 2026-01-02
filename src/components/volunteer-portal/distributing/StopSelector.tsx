@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import { MapPin, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { Route, RouteStop, Coordinates } from "@/types/distribution";
+import { Route, RouteStop } from "@/types/distribution";
 import { getRouteColor } from "@/lib/constants/routes";
 
 interface StopSelectorProps {
     routes: Route[];
     routeStops: RouteStop[];
-    detectedStop: RouteStop | null;
-    currentLocation: Coordinates | null;
     loading?: boolean;
     onConfirmStop: (stop: RouteStop) => void;
 }
@@ -17,8 +15,6 @@ interface StopSelectorProps {
 export function StopSelector({
     routes,
     routeStops,
-    detectedStop,
-    currentLocation,
     loading = false,
     onConfirmStop,
 }: StopSelectorProps) {
@@ -32,57 +28,18 @@ export function StopSelector({
                         <MapPin className="w-8 h-8 text-blue-500" />
                     </div>
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-                        Confirm Your Location
+                        Select Your Stop
                     </h2>
                     <p className="text-slate-500 dark:text-slate-400">
-                        {detectedStop
-                            ? "We detected you're near a stop. Please confirm or select a different one."
-                            : "Select your current stop to begin check-ins."}
+                        Choose your current stop to begin check-ins.
                     </p>
                 </div>
 
-                {/* Detected Stop or No Detection Message */}
-                {detectedStop ? (
-                    <div className="mb-4">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Detected stop:</p>
-                        <div className="bg-slate-100 dark:bg-slate-700/50 border-2 border-slate-400 dark:border-slate-500 rounded-xl p-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white">
-                                        {detectedStop.stopNumber}
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-slate-900 dark:text-white">
-                                            {detectedStop.name}
-                                        </p>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400">
-                                            {detectedStop.routeName}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => onConfirmStop(detectedStop)}
-                                    className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium transition-colors"
-                                >
-                                    Confirm
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ) : currentLocation && (
-                    <div className="mb-4 p-4 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
-                        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                            <MapPin className="w-5 h-5" />
-                            <p className="text-sm">No stop detected nearby. Please select your stop below.</p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Select Different Stop - Two Step: Route then Stop */}
+                {/* Select Stop - Two Step: Route then Stop */}
                 <div>
                     {!selectedRouteId && (
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                            {detectedStop ? "Or select a different stop:" : "Select your stop:"}
+                            Select a route:
                         </p>
                     )}
 
@@ -142,27 +99,14 @@ export function StopSelector({
                                                 onConfirmStop(stop);
                                                 setSelectedRouteId(null);
                                             }}
-                                            className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
-                                                detectedStop?.id === stop.id
-                                                    ? 'bg-slate-100 dark:bg-slate-700/50 border-2 border-slate-400 dark:border-slate-500'
-                                                    : 'bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700'
-                                            }`}
+                                            className="w-full flex items-center gap-3 p-3 rounded-lg transition-colors bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700"
                                         >
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                                                detectedStop?.id === stop.id
-                                                    ? 'bg-slate-600 text-white'
-                                                    : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'
-                                            }`}>
+                                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300">
                                                 {stop.stopNumber}
                                             </div>
                                             <span className="text-slate-900 dark:text-white font-medium">
                                                 {stop.name}
                                             </span>
-                                            {detectedStop?.id === stop.id && (
-                                                <span className="ml-auto text-xs text-slate-600 dark:text-slate-400 font-medium">
-                                                    GPS detected
-                                                </span>
-                                            )}
                                         </button>
                                     ))}
                             </div>

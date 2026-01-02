@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
     User, Hash, Loader2, UserPlus, UserCheck, Utensils, Package, Plus, Minus, X
 } from "lucide-react";
-import { CheckedInPerson, SelectedItem, Coordinates, RouteStop } from "@/types/distribution";
+import { CheckedInPerson, SelectedItem, RouteStop } from "@/types/distribution";
 import {
     findExistingPerson,
     checkIfPersonCheckedInToday,
@@ -15,7 +15,6 @@ import {
 
 interface CheckInFormProps {
     currentStop: RouteStop | null;
-    currentLocation: Coordinates | null;
     routeStopId: string | null;
     checkInItems: SelectedItem[];
     onOpenItemPicker: () => void;
@@ -26,7 +25,6 @@ interface CheckInFormProps {
 
 export function CheckInForm({
     currentStop,
-    currentLocation,
     routeStopId,
     checkInItems,
     onOpenItemPicker,
@@ -128,7 +126,7 @@ export function CheckInForm({
                 throw new Error('Failed to create person');
             }
 
-            const location = currentLocation ?? (currentStop ? { lat: currentStop.latitude, lng: currentStop.longitude } : null);
+            const location = currentStop ? { lat: currentStop.latitude, lng: currentStop.longitude } : null;
             const distributionId = await createDistribution(personId, mealServed, takeAway, location, routeStopId);
 
             if (distributionId && checkInItems.length > 0) {
