@@ -159,7 +159,7 @@ export function CheckInForm({
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                    <User className="w-5 h-5 text-orange-500" />
+                    <User className="w-5 h-5 text-blue-500" />
                     New Check-In
                 </h2>
                 <button
@@ -181,7 +181,7 @@ export function CheckInForm({
                         value={firstName}
                         onChange={(e) => setFirstName(e.target.value)}
                         placeholder="First"
-                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         autoComplete="off"
                     />
                 </div>
@@ -194,7 +194,7 @@ export function CheckInForm({
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
                         placeholder="Last"
-                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         autoComplete="off"
                     />
                 </div>
@@ -213,7 +213,7 @@ export function CheckInForm({
                     placeholder="0000"
                     maxLength={4}
                     inputMode="numeric"
-                    className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-mono tracking-widest"
+                    className="w-full px-4 py-4 bg-slate-100 dark:bg-slate-700 border-0 rounded-xl text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-mono tracking-widest"
                     autoComplete="off"
                 />
             </div>
@@ -256,7 +256,7 @@ export function CheckInForm({
             <div className={`bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-4 ${!firstName.trim() ? 'opacity-50' : ''}`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Utensils className="w-5 h-5 text-orange-500" />
+                        <Utensils className="w-5 h-5 text-blue-500" />
                         <span className="font-medium text-slate-900 dark:text-white">Meal Served</span>
                     </div>
                     <button
@@ -368,15 +368,24 @@ export function CheckInForm({
                     <>
                         <UserPlus className="w-5 h-5" />
                         Check In
-                        {(mealServed || takeAway > 0 || checkInItems.length > 0) && (
-                            <span className="ml-2 text-sm opacity-80">
-                                ({mealServed ? 'meal served' : ''}
-                                {mealServed && takeAway > 0 ? ', ' : ''}
-                                {takeAway > 0 ? `${takeAway} take away meal${takeAway !== 1 ? 's' : ''}` : ''}
-                                {(mealServed || takeAway > 0) && checkInItems.length > 0 ? ', ' : ''}
-                                {checkInItems.length > 0 ? `${checkInItems.length} item${checkInItems.length !== 1 ? 's' : ''}` : ''})
-                            </span>
-                        )}
+                        {(() => {
+                            const totalMeals = (mealServed ? 1 : 0) + takeAway;
+                            const hasItems = checkInItems.length > 0;
+                            if (totalMeals === 0 && !hasItems) return null;
+
+                            const parts: string[] = [];
+                            if (totalMeals > 0) {
+                                parts.push(`${totalMeals} meal${totalMeals !== 1 ? 's' : ''}`);
+                            }
+                            if (hasItems) {
+                                parts.push(`${checkInItems.length} item${checkInItems.length !== 1 ? 's' : ''}`);
+                            }
+                            return (
+                                <span className="ml-2 text-sm opacity-80">
+                                    ({parts.join(', ')})
+                                </span>
+                            );
+                        })()}
                     </>
                 )}
             </button>
