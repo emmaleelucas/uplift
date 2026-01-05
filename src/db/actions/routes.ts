@@ -6,9 +6,8 @@ import {
     RouteSchedule,
 } from "@/types/distribution";
 
-const supabase = createClient();
-
 export async function fetchRoutes(): Promise<Route[]> {
+    const supabase = createClient();
     const { data } = await supabase
         .from('route')
         .select('id, name')
@@ -18,6 +17,7 @@ export async function fetchRoutes(): Promise<Route[]> {
 }
 
 export async function fetchRouteStops(): Promise<RouteStop[]> {
+    const supabase = createClient();
     const { data: stops } = await supabase
         .from('route_stop')
         .select(`
@@ -47,6 +47,7 @@ export async function fetchRouteStops(): Promise<RouteStop[]> {
 }
 
 export async function fetchRoutesWithStops(): Promise<RouteWithStops[]> {
+    const supabase = createClient();
     const { data: routes } = await supabase
         .from('route')
         .select('id, name')
@@ -101,6 +102,7 @@ export async function fetchRoutesWithStops(): Promise<RouteWithStops[]> {
 }
 
 export async function fetchRouteSchedules(): Promise<RouteSchedule[]> {
+    const supabase = createClient();
     const { data } = await supabase
         .from('route_schedule')
         .select('id, route_id, day_of_week, start_time')
